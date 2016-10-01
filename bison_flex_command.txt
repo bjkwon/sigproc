@@ -1,0 +1,3 @@
+bison psycon.y
+
+flex -opsycon.yy.c psycon.l
