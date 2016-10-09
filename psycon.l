@@ -60,6 +60,10 @@ NUM	[[:digit:]]+"."?[[:digit:]]*([eE][+-]?[[:digit:]]+)?|"."[[:digit:]]+
 	yy_push_state(PARENTH);
 	return (unsigned char)yytext[0];
 	}
+<PARENTH>endt {
+	yylloc.last_column += yyleng;
+	return getTokenID(yytext);
+	}
 <PARENTH>\) {	/* closing parenthesis */
 	yylloc.last_column += yyleng;
 	yy_pop_state();

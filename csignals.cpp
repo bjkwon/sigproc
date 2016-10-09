@@ -6,7 +6,6 @@
 #include <limits> 
 #include <stdlib.h>
 #include <time.h>
-#include "fftw3.h"
 #include <vector>
 #include <algorithm>
 
@@ -104,32 +103,32 @@ void SwapCSignalsPutScalarSecond(CSignals &sig1, CSignals &sig2)
 	}
 }
 
-EXP_CS datachunk::datachunk()
+datachunk::datachunk()
 :nSamples(0), BufSize(0), buf(new double[1])
 {
 }
 
-EXP_CS datachunk::datachunk(double value)
+datachunk::datachunk(double value)
 :nSamples(1), BufSize(1), buf(new double[1])
 {
 	SetValue(value);
 }
 
-EXP_CS datachunk::datachunk(const datachunk& src) 
+datachunk::datachunk(const datachunk& src) 
 :nSamples(0), BufSize(0), buf(new double[1])
 {
 	*this = src;
 }
 
 
-EXP_CS datachunk::datachunk(double *y, int len)
+datachunk::datachunk(double *y, int len)
 :nSamples(len), BufSize((size_t)(len*1.1)), buf(new double[BufSize])
 {
 	memcpy((void*)buf, (void*)y, sizeof(double)*len);
 }
 
 
-EXP_CS datachunk& datachunk::operator=(const datachunk& rhs)
+datachunk& datachunk::operator=(const datachunk& rhs)
 {
 	if (this != &rhs) 
 	{
@@ -142,12 +141,12 @@ EXP_CS datachunk& datachunk::operator=(const datachunk& rhs)
 	return *this;
 }
 
-EXP_CS datachunk::~datachunk()
+datachunk::~datachunk()
 {
 	if (buf) delete[] buf;
 }
 
-EXP_CS datachunk& datachunk::UpdateBuffer(int length)	// Set nSamples. Re-allocate buf if necessary to accommodate new length.
+datachunk& datachunk::UpdateBuffer(int length)	// Set nSamples. Re-allocate buf if necessary to accommodate new length.
 {
 	if (length < 0 || length == nSamples)
 		return *this;
@@ -200,14 +199,14 @@ datachunk &datachunk::each(double (*fn)(double, double), datachunk &arg2)
 	return *this;
 }
 
-EXP_CS double datachunk::Sum()
+double datachunk::Sum()
 {
 	double sum(0.);
 	for (int i=0; i<nSamples; i++)		sum += buf[i];
 	return sum;
 }
 
-EXP_CS double datachunk::Max(int &id)
+double datachunk::Max(int &id)
 {
 	double localMax(-1.e100);
 	for (int i=0; i<nSamples; i++)
@@ -217,7 +216,7 @@ EXP_CS double datachunk::Max(int &id)
 	return buf[id-1];
 }
 
-EXP_CS double datachunk::Min(int &id)
+double datachunk::Min(int &id)
 {
 	double localMin(1.e100);
 	for (int i=0; i<nSamples; i++)
@@ -227,35 +226,35 @@ EXP_CS double datachunk::Min(int &id)
 	return buf[id-1];
 }
 
-EXP_CS CSignal::CSignal()
+CSignal::CSignal()
 :fs(1), chain(NULL), tmark(0.)
 {
 }
 
-EXP_CS CSignal::CSignal(int sampleRate)
+CSignal::CSignal(int sampleRate)
 :fs(max(sampleRate,1)), chain(NULL), tmark(0.)
 {
 }
 
-EXP_CS CSignal::CSignal(double value)
+CSignal::CSignal(double value)
 :fs(1), chain(NULL), tmark(0.)
 {
 	SetValue(value);
 }
 
-EXP_CS CSignal::CSignal(std::string str)
+CSignal::CSignal(std::string str)
 :fs(1), chain(NULL), tmark(0.)
 {
 	SetString(str.c_str());
 }
 
-EXP_CS CSignal::CSignal(const CSignal& src)
+CSignal::CSignal(const CSignal& src)
 :fs(1), chain(NULL), tmark(0.)
 {
 	*this = src;
 }
 
-EXP_CS CSignal::CSignal(double *y, int len)
+CSignal::CSignal(double *y, int len)
 :fs(1), chain(NULL), tmark(0.)
 {
 	UpdateBuffer(len);
@@ -263,7 +262,7 @@ EXP_CS CSignal::CSignal(double *y, int len)
 }
 
 
-EXP_CS CSignal::~CSignal()
+CSignal::~CSignal()
 {
 	if (buf) {
 		delete[] buf; 
@@ -276,7 +275,7 @@ EXP_CS CSignal::~CSignal()
 }
 
 
-EXP_CS CSignal& CSignal::Reset(int fs2set)	// Empty all data fields - sets nSamples to 0.
+CSignal& CSignal::Reset(int fs2set)	// Empty all data fields - sets nSamples to 0.
 {
 	if (fs2set)	// if fs2set == 0 (default), keep the current fs.
 		fs = max(fs2set,1);	// not to allow minus.
@@ -290,7 +289,7 @@ EXP_CS CSignal& CSignal::Reset(int fs2set)	// Empty all data fields - sets nSamp
 	return *this;
 }
 
-EXP_CS void CSignal::SetChain(CSignal *unit, double time_shifted)
+void CSignal::SetChain(CSignal *unit, double time_shifted)
 {
 	if (unit!=NULL)
 	{
@@ -300,7 +299,7 @@ EXP_CS void CSignal::SetChain(CSignal *unit, double time_shifted)
 	}
 }
 
-EXP_CS void CSignal::SetChain(double time_shifted)
+void CSignal::SetChain(double time_shifted)
 {
 	if (nSamples>0)
 	{
@@ -310,7 +309,7 @@ EXP_CS void CSignal::SetChain(double time_shifted)
 	}
 }
 
-EXP_CS CSignal& CSignal::operator=(const CSignal& rhs)
+CSignal& CSignal::operator=(const CSignal& rhs)
 {   // Make a deep copy only for buf, but not for sc, because sc is not necessarily dynamically allocated.
 	// Thus, BE Extra careful when making writing an assignment statement about the scaling..
 	if (this != &rhs) 
@@ -374,7 +373,7 @@ CSignal& CSignal::operator+=(CSignal &sec)
 	return *this; 
 } 
 
-EXP_CS const CSignal& CSignal::operator+=(CSignal *yy)
+const CSignal& CSignal::operator+=(CSignal *yy)
 { // a little jumbled up with jhpark's previous codes and bjkwon's current codes... 7/6/2016
 	if (yy==NULL) return *this;
 	if (IsEmpty()) return (*this=*yy);
@@ -579,28 +578,28 @@ CSignal& CSignal::operator*=(CSignal &sec)
 	return *this; 
 } 
 
-EXP_CS CSignal& CSignal::operator-=(CSignal &sec)
+CSignal& CSignal::operator-=(CSignal &sec)
 {
 	return *this += -sec;
 }
-EXP_CS CSignal& CSignal::operator-(void)	// Unary minus
+CSignal& CSignal::operator-(void)	// Unary minus
 {
 	for (int i=0; i<nSamples; i++)		buf[i] = -buf[i];
 	if (chain)	-*chain;
 	return *this;
 }
 
-EXP_CS CSignal& CSignal::operator/=(double scaleFactor)
+CSignal& CSignal::operator/=(double scaleFactor)
 {
 	return *this *= 1.0/scaleFactor;
 }
 
-EXP_CS CSignal& CSignal::operator/=(CSignal &scaleArray)
+CSignal& CSignal::operator/=(CSignal &scaleArray)
 {
 	return *this *= scaleArray.Reciprocal();
 }
 
-EXP_CS CSignal& CSignal::Reciprocal(void)
+CSignal& CSignal::Reciprocal(void)
 {
 	if (IsScalar())
 		SetValue(1.0/value());
@@ -613,13 +612,13 @@ EXP_CS CSignal& CSignal::Reciprocal(void)
 	return *this;
 }
 
-EXP_CS CSignal& CSignal::operator<<=(const double delta)
+CSignal& CSignal::operator<<=(const double delta)
 {
 	*this>>=(-delta);
 	return *this;
 }
 
-EXP_CS CSignal& CSignal::operator>>=(const double delta)
+CSignal& CSignal::operator>>=(const double delta)
 {
 	if (delta == 0)
 		return *this;
@@ -652,7 +651,7 @@ EXP_CS CSignal& CSignal::operator>>=(const double delta)
 	return *this;
 }
 
-EXP_CS CSignal& CSignal::operator<(const CSignal &sec)
+CSignal& CSignal::operator<(const CSignal &sec)
 {
 	if (!IsScalar() || !sec.IsScalar())
 		throw "The operands of operator '<' must be scalars.";
@@ -660,7 +659,7 @@ EXP_CS CSignal& CSignal::operator<(const CSignal &sec)
 	return *this;
 }
 
-EXP_CS bool CSignal::operator==(const CSignal &sec) const
+bool CSignal::operator==(const CSignal &sec) const
 {
 	if (IsScalar() && sec.IsScalar())
 		return (value() == sec.value());
@@ -681,7 +680,7 @@ EXP_CS bool CSignal::operator==(const CSignal &sec) const
 	return false;
 }
 
-EXP_CS CSignal& CSignal::operator!()
+CSignal& CSignal::operator!()
 {
 	if (!IsScalar())
 		throw "The operand of operator '!' must be scalars.";
@@ -689,7 +688,7 @@ EXP_CS CSignal& CSignal::operator!()
 	return *this;
 }
 
-EXP_CS CSignal& CSignal::operator&&(const CSignal &sec)
+CSignal& CSignal::operator&&(const CSignal &sec)
 {
 	if (!IsScalar() || !sec.IsScalar())
 		throw "The operands of operator '&&' must be scalars.";
@@ -697,7 +696,7 @@ EXP_CS CSignal& CSignal::operator&&(const CSignal &sec)
 	return *this;
 }
 
-EXP_CS CSignal& CSignal::operator||(const CSignal &sec)
+CSignal& CSignal::operator||(const CSignal &sec)
 {
 	if (!IsScalar() || !sec.IsScalar())
 		throw "The operands of operator '!=' must be scalars.";
@@ -705,7 +704,7 @@ EXP_CS CSignal& CSignal::operator||(const CSignal &sec)
 	return *this;
 }
 
-EXP_CS void CSignal::AddChain(CSignal &sec)
+void CSignal::AddChain(CSignal &sec)
 { // assume that nSamples>1 in both. 
 	//MAKE SURE TO AVOID CIRCULAR CHAINING....IT WILL CREATE A STACK OVERFLOW
 
@@ -742,7 +741,7 @@ CSignal * CSignal::GetDeepestChain()
 	return p;
 }
 
-EXP_CS int CSignal::CountChains()
+int CSignal::CountChains()
 {
 	int res(1);
 	CSignal *p;
@@ -751,7 +750,7 @@ EXP_CS int CSignal::CountChains()
 	return res;
 }
 
-EXP_CS double CSignal::alldur()
+double CSignal::alldur()
 {
 	CSignal *p = GetDeepestChain();
 	if (p!=NULL)	return p->tmark + p->dur()+(double)1./fs*1000.;
@@ -759,17 +758,11 @@ EXP_CS double CSignal::alldur()
 
 }
 
-EXP_CS double CSignal::MakeChainless(double dur, int *pNewFS)
+double CSignal::MakeChainless()
 { //This converts the null intervals of the signal to zero.
-	if (pNewFS)
-		fs = max(fs, *pNewFS);
-	else
-		fs = max(fs, 1);
-	double totaldur = alldur();	// doing this here as fs might have changed.
-	double newdur = max(totaldur, dur);
-	if (pNewFS)
-		*pNewFS = fs;
-	if (!tmark && !chain && totaldur == newdur)	// already chainless && no padding required.
+	fs = max(fs, 1);
+	double newdur = alldur();	// doing this here as fs might have changed.
+	if (!tmark && !chain)	// already chainless && no padding required.
 		return newdur;
 
 	CSignal nsig(fs);
@@ -793,7 +786,7 @@ EXP_CS double CSignal::MakeChainless(double dur, int *pNewFS)
 }
 
 
-EXP_CS double CSignal::RMS()
+double CSignal::RMS()
 { // This does not go into next.... for stereo signals, call RMS specifically, like next->RMS()  bjk 4/23/2016
 	double cum(0);
 	int count(0);
@@ -806,180 +799,7 @@ EXP_CS double CSignal::RMS()
 	return _getdB(sqrt(cum/count));
 }
 
-EXP_CS int CSignals::Wavread(const char *wavname, char *errstr)
-{
-	SNDFILE *wavefileID;
-	SF_INFO sfinfo ;
-	sf_count_t count ;
-	if ((wavefileID = sf_open (wavname, SFM_READ, &sfinfo)) == NULL)
-	{	sprintf(errstr, "Unable to open audio file '%s'\n", wavname);
-		sf_close (wavefileID) ;
-		return NULL;	}
-	if (sfinfo.channels>2) { strcpy(errstr, "Up to 2 channels (L R) are allowed in AUX--we have two ears, dude!"); return NULL;}
-	Reset(sfinfo.samplerate);
-	if (sfinfo.channels==1)
-	{
-		UpdateBuffer((int)sfinfo.frames);
-		count = sf_read_double (wavefileID, buf, sfinfo.frames);  // common.h
-	}
-	else
-	{
-		double *buffer = new double[(size_t)sfinfo.channels*(int)sfinfo.frames];
-		count = sf_read_double (wavefileID, buffer, sfinfo.channels*sfinfo.frames);  // common.h
-
-		double (*buf3)[2];
-		next = new CSignal(sfinfo.samplerate);
-		int m(0);
-		buf3 = (double (*)[2])&buffer[m++];
-		UpdateBuffer((int)sfinfo.frames);
-		for (int k=0; k<sfinfo.frames; k++)			buf[k] = buf3[k][0];
-		buf3 = (double (*)[2])&buffer[m++];
-		next->UpdateBuffer((int)sfinfo.frames);
-		for (int k=0; k<sfinfo.frames; k++)			next->buf[k] = buf3[k][0];
-		delete[] buffer;
-	}
-	sf_close (wavefileID) ;
-	return 1;
-}
-
-EXP_CS int CSignals::Wavwrite(const char *wavname, char *errstr, std::string wavformat)
-{
-	MakeChainless();
-	SF_INFO sfinfo ;
-	SNDFILE *wavefileID;
-	sfinfo.channels = (next) ? 2 : 1; 
-	if (wavformat.length()==0)
-		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_PCM_16; // default
-	else if (wavformat=="8")
-		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_PCM_U8;
-	else if (wavformat=="16")
-		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_PCM_16;
-	else if (wavformat=="24")
-		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_PCM_24;
-	else if (wavformat=="32")
-		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_PCM_32;
-	else if (wavformat=="ulaw")
-		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_ULAW;
-	else if (wavformat=="alaw")
-		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_ALAW;
-	else if (wavformat=="adpcm1")
-		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_IMA_ADPCM;
-	else if (wavformat=="adpcm2")
-		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_MS_ADPCM;
-//	else if (wavformat=="vorbis")
-//		sfinfo.format = SF_FORMAT_OGG + SF_FORMAT_VORBIS; // not available ...  ogg.c requires external lib which I don't have yet. bjkwon 03/19/2016
-	else
-	{	sprintf(errstr, "Supported waveformat---8, 16, 24, 32, ulaw, alaw, adpcm1 or adpcm2.\n", wavname);
-		return NULL;	}
-	sfinfo.frames = nSamples;
-	sfinfo.samplerate = fs;
-	sfinfo.sections = sfinfo.seekable = 1;
-	if ((wavefileID = sf_open (wavname, SFM_WRITE, &sfinfo)) == NULL)
-	{	sprintf(errstr, "Unable to open/write audio file to '%s'\n", wavname);
-		sf_close (wavefileID) ;
-		return NULL;	}
-	if (sfinfo.channels==1)
-		sf_writef_double(wavefileID, buf, nSamples);
-	else
-	{
-		double *buffer = new double[(size_t)sfinfo.channels*nSamples];
-		double (*buf3)[2];
-		int m(0);
-		// it should not be p && m<2 but just m<2, because p will never be NULL (why? next is CSignal, not CSignals)
-		for (CSignals *p = this; p && m<2; p=(CSignals*)p->next, m++)
-		{
-			buf3 = (double (*)[2])&buffer[m];
-			for (int k=0; k<nSamples; k++)			
-				buf3[k][0] = p->buf[k];
-		}
-		sf_writef_double(wavefileID, buffer, nSamples);
-		delete[] buffer;
-	}
-	sf_close (wavefileID) ;
-	return 1;
-}
-
-#ifdef _WINDOWS
-EXP_CS void CSignals::PlayArray(char *errstr)
-{
-	PlayArray(0, errstr);
-}
-
-EXP_CS void CSignals::PlayArray(int DevID, char *errstr)
-{ // returns a negative number if error occurrs
-	PlayArray(DevID, 0, NULL, 2, errstr); 
-	// This is how you play in blocking mode (specify 2 for the nProgReport even though you are not utilizing any messaging back to hWnd.. This is just due to the way wavBuffer2snd is written in waves.cpp)
-	// Jan 19, 2013. BJ Kwon
-}
-
-EXP_CS void CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr, int loop)
-{// returns a negative number if error occurrs
- // This play the sound by specified block duration, generating event notification in every block
- // block_dur_ms is adjusted by the quantization of fs. Therefore, user should check if it has beend adjusted during this call.
- 	int nSamples4Block = (int)(*block_dur_ms/(1000./(double)fs)+.5);
-	*block_dur_ms = (double) nSamples4Block *1000. /(double)fs;
-	double _nBlocks = (double)nSamples / nSamples4Block;
-	int nBlocks = (int)_nBlocks;
-	if (_nBlocks - (double)nBlocks > 0.1) nBlocks++;
-	PlayArray(DevID, userDefinedMsgID, hApplWnd, nBlocks, errstr, loop);
-}
-
-EXP_CS void CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr)
-{// returns a negative number if error occurrs
- // This play the sound by specified block duration, generating event notification in every block
- // block_dur_ms is adjusted by the quantization of fs. Therefore, user should check if it has beend adjusted during this call.
- 	int nSamples4Block = (int)(*block_dur_ms/(1000./(double)fs)+.5);
-	*block_dur_ms = (double) nSamples4Block *1000. /(double)fs;
-	double _nBlocks = (double)nSamples / nSamples4Block;
-	int nBlocks = (int)_nBlocks;
-	if (_nBlocks - (double)nBlocks > 0.1) nBlocks++;
-	PlayArrayNext(DevID, userDefinedMsgID, hApplWnd, nBlocks, errstr);
-}
-
-
-short * CSignals::makebuffer(int &nChan)
-{	//For now this is only 16-bit playback (Sep 2008)
-	short *Buffer2Play;
-	MakeChainless();
-	if (next!=NULL)
-	{
-		double *buf2 = next->buf;
-		Buffer2Play = new short[nSamples*2];
-		for (int i=0; i<nSamples; ++i) {
-			Buffer2Play[i*2] = (short)(_double_to_24bit(buf[i]) >> 8);
-			Buffer2Play[i*2+1] = (short)(_double_to_24bit(buf2[i]) >> 8);
-		}
-		nChan=2;
-	}
-	else
-	{
-		Buffer2Play = new short[nSamples];
-		_double_to_short(buf, Buffer2Play, nSamples);
-		nChan=1;
-	}
-	return Buffer2Play;
-}
-
-EXP_CS void CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr, int loop)
-{// Re-do error treatment 6/1/2016 bjk
-	errstr[0]=0;
-	int nChan, ecode(MMSYSERR_NOERROR);
-	short *Buffer2Play = makebuffer(nChan);
-	PlayBufAsynch16(DevID, Buffer2Play, nSamples, nChan, fs, userDefinedMsgID, hApplWnd, nProgReport, &ecode, loop, errstr);
-}
-
-EXP_CS void CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr)
-{
-	errstr[0]=0;
-	int nChan, ecode(MMSYSERR_NOERROR);
-	short *Buffer2Play = makebuffer(nChan);
-	continuePlay(DevID, Buffer2Play, nSamples, nChan, userDefinedMsgID, nProgReport, errstr);
-}
-
-#endif
-
-
-EXP_CS CSignal& CSignal::Interp(const CSignal& gains, const CSignal& tmarks)
+CSignal& CSignal::Interp(const CSignal& gains, const CSignal& tmarks)
 {
 	if (gains.nSamples!=tmarks.nSamples)
 		throw "The length of both arguments of interp( ) must be the same.";
@@ -1000,19 +820,19 @@ EXP_CS CSignal& CSignal::Interp(const CSignal& gains, const CSignal& tmarks)
 	return *this;
 }
 
-EXP_CS CSignal& CSignal::Take(CSignal& out, int id1)
+CSignal& CSignal::Take(CSignal& out, int id1)
 { // if ending point is missed, it assumes the end of the whole duration.
 	if (id1==0) {out = *this; return out;}
 	return Take(out, id1, nSamples-1);
 }
 
-EXP_CS CSignal& CSignal::Take(CSignal& out, double begin_ms)
+CSignal& CSignal::Take(CSignal& out, double begin_ms)
 { // if ending point is missed, it assumes the end of the whole duration.
 	int id1 = round(begin_ms/1000.*fs);
 	return Take(out, id1, nSamples-1);
 }
 
-EXP_CS CSignal& CSignal::Take(CSignal& out, int id1, int id2)
+CSignal& CSignal::Take(CSignal& out, int id1, int id2)
 {
 	id2 = min (nSamples, id2);
 	if (id2<id1)		return *this;
@@ -1023,7 +843,7 @@ EXP_CS CSignal& CSignal::Take(CSignal& out, int id1, int id2)
 	return out;
 }
 
-EXP_CS CSignal& CSignal::Take(CSignal& out, double begin_ms, double end_ms)
+CSignal& CSignal::Take(CSignal& out, double begin_ms, double end_ms)
 { /* if id1 is negative, zero's are added before the waveform.
   if id2 is greater than current length, the end of current array will be taken.
 	
@@ -1038,7 +858,7 @@ EXP_CS CSignal& CSignal::Take(CSignal& out, double begin_ms, double end_ms)
 	return out;
 }
 
-EXP_CS CSignal& CSignal::MergeChains()
+CSignal& CSignal::MergeChains()
 {// This tidy things up by removing unnecessary chains and rearranging them.
 	CSignal temp;
 	if (nSamples==0 && chain) {temp = *chain; chain=NULL; *this = temp; }
@@ -1068,7 +888,7 @@ EXP_CS CSignal& CSignal::MergeChains()
 
 }
 
-EXP_CS CSignal& CSignal::MC(CSignal &out, vector<double> tmarks, int id1, int id2)
+CSignal& CSignal::MC(CSignal &out, vector<double> tmarks, int id1, int id2)
 {
 	CSignal parts;
 	double tp1 = ((double)id1/fs)*1000.;
@@ -1109,7 +929,7 @@ EXP_CS CSignal& CSignal::MC(CSignal &out, vector<double> tmarks, int id1, int id
 	return *this = out;
 }
 
-EXP_CS CSignal& CSignal::MakeChains(vector<double> tmarks)
+CSignal& CSignal::MakeChains(vector<double> tmarks)
 { // check if this runs OK with Trim
 	CSignal out(fs), parts, copy(*this), *p(this);
 	for (vector<double>::reverse_iterator iter=tmarks.rbegin(); iter!=tmarks.rend(); iter +=2, p=p->chain)
@@ -1130,7 +950,7 @@ EXP_CS CSignal& CSignal::MakeChains(vector<double> tmarks)
 	return (*this = out);
 }
 
-EXP_CS CSignal& CSignal::Trim(double begin_ms, double end_ms)
+CSignal& CSignal::Trim(double begin_ms, double end_ms)
 {
 	if (begin_ms == end_ms) {Reset(); return *this;}
 	vector<double> tmarks;
@@ -1197,12 +1017,8 @@ EXP_CS CSignal& CSignal::Trim(double begin_ms, double end_ms)
 	}
 	return *this;
 }
-EXP_CS void CSignals::Dramp(double dur_ms, int beginID)
-{
-	CSignal::Dramp(dur_ms, beginID);
-	if (next!=NULL) next->Dramp(dur_ms, beginID);
-}
-EXP_CS void CSignal::Dramp(double dur_ms, int beginID)
+
+void CSignal::Dramp(double dur_ms, int beginID)
 {
 	if (chain!=NULL) chain->Dramp(dur_ms, beginID);
 	// Cosine square ramping and damping of the array
@@ -1221,14 +1037,14 @@ EXP_CS void CSignal::Dramp(double dur_ms, int beginID)
 	}
 }
 
-EXP_CS double * CSignal::Noise(double dur_ms)
+double * CSignal::Noise(double dur_ms)
 {
 	int nSamplesNeeded = round(dur_ms/1000.*fs);
 	double *p = Noise(nSamplesNeeded);
 	return p;
 }
 
-EXP_CS double * CSignal::Noise(int nsamples)
+double * CSignal::Noise(int nsamples)
 {
 	Reset();
 	UpdateBuffer(nsamples); //allocate memory if necessary
@@ -1240,14 +1056,14 @@ EXP_CS double * CSignal::Noise(int nsamples)
 	return buf;
 }
 
-EXP_CS double * CSignal::Noise2 (double dur_ms)
+double * CSignal::Noise2 (double dur_ms)
 { //Gaussian noise
 	int nSamplesNeeded = round(dur_ms/1000.*fs); 
 	double *p = Noise2(nSamplesNeeded);
 	return p;
 }
 
-EXP_CS double * CSignal::Noise2 (int nsamples)
+double * CSignal::Noise2 (int nsamples)
 { //Gaussian noise
 	double fac, r, v1, v2, sum(0.);
 	Reset();
@@ -1269,7 +1085,9 @@ EXP_CS double * CSignal::Noise2 (int nsamples)
 	return buf;
 }
 
-EXP_CS double * CSignal::fm2(CSignal flutter, int multiplier, char *errstr)
+#ifndef NO_RESAMPLE
+
+double * CSignal::fm2(CSignal flutter, int multiplier, char *errstr)
 {   // Modulate the entire signal by the array flutter ( > 1, fast-forward, higher-pitched, < 1 slow-down, lower-pitched
 	// the length of flutter should be A LOT shorter than nSamples (e.g., 1 tendth of it), but that is checked and exception is handled in AuxFunc.cpp
 	flutter *= multiplier;
@@ -1300,7 +1118,9 @@ EXP_CS double * CSignal::fm2(CSignal flutter, int multiplier, char *errstr)
 	return buf;
 }
 
-EXP_CS double * CSignal::fm(double midFreq, double fmWidth, double fmRate, int nsamples, double beginFMPhase)
+#endif //NO_RESAMPLE
+
+double * CSignal::fm(double midFreq, double fmWidth, double fmRate, int nsamples, double beginFMPhase)
 {   // beginFMPhase is to be set. (beginPhase is zero here ==> Its not so meaningful to set both of them)
 	double t;
 	Reset();
@@ -1313,14 +1133,14 @@ EXP_CS double * CSignal::fm(double midFreq, double fmWidth, double fmRate, int n
 	return buf;
 }
 
-EXP_CS double * CSignal::fm(double midFreq, double fmWidth, double fmRate, double dur_ms, double beginFMPhase)
+double * CSignal::fm(double midFreq, double fmWidth, double fmRate, double dur_ms, double beginFMPhase)
 {   
 	int nSamplesNeeded = round(dur_ms/1000.*fs); 
 	double *p = fm(midFreq, fmWidth, fmRate, nSamplesNeeded, beginFMPhase);
 	return p;
 }
 
-EXP_CS double * CSignal::Tone(vector<double> freqs, int len)
+double * CSignal::Tone(vector<double> freqs, int len)
 { // freqs: array of desired instantaneous frequencies requested
   // fval: coefficient inside the sine term in each instance
   // for a constant frequency, fval is always the same as specfied frequency, but in general, it is not
@@ -1353,14 +1173,14 @@ EXP_CS double * CSignal::Tone(vector<double> freqs, int len)
 	return buf;
 }
 
-EXP_CS double * CSignal::Tone(vector<double> freqs, double dur_ms)
+double * CSignal::Tone(vector<double> freqs, double dur_ms)
 {
 	int nSamplesNeeded = round(dur_ms/1000.*fs); 
 	double *p = Tone(freqs, nSamplesNeeded);
 	return p;
 }
 
-EXP_CS double * CSignal::Tone(double freq, int nsamples, double beginPhase)
+double * CSignal::Tone(double freq, int nsamples, double beginPhase)
 {
 	Reset();
 	UpdateBuffer(nsamples); //allocate memory if necessary
@@ -1369,15 +1189,18 @@ EXP_CS double * CSignal::Tone(double freq, int nsamples, double beginPhase)
 	return buf;
 }
 
-EXP_CS double * CSignal::Tone(double freq, double dur_ms, double beginPhase)
+double * CSignal::Tone(double freq, double dur_ms, double beginPhase)
 {
 	int nSamplesNeeded = round(dur_ms/1000.*fs);
 	double *p = Tone(freq, nSamplesNeeded, beginPhase);
 	return p;
 }
 
+#ifndef NO_FFTW
 
-EXP_CS double * CSignal::Hilbert(int len)
+#include "fftw3.h"
+
+double * CSignal::Hilbert(int len)
 {
 	if (len<1)		return NULL;
 	len = min(nSamples,len);
@@ -1426,7 +1249,7 @@ EXP_CS double * CSignal::Hilbert(int len)
 }
 
 
-EXP_CS double * CSignal::ShiftFreq(double shift)
+double * CSignal::ShiftFreq(double shift)
 {
 	CSignals copy(*this);
 	Hilbert(nSamples);
@@ -1445,7 +1268,7 @@ EXP_CS double * CSignal::ShiftFreq(double shift)
 	return buf;
 }
 
-EXP_CS double * CSignal::HilbertEnv(int len)
+double * CSignal::HilbertEnv(int len)
 {
 	CSignals analytic(*this);
 	Hilbert(len);
@@ -1455,8 +1278,9 @@ EXP_CS double * CSignal::HilbertEnv(int len)
 	return buf;
 }
 
+#endif 
 /* This works but is slower.....
-EXP_CS double * CSignal::HilbertEnv(int len)
+double * CSignal::HilbertEnv(int len)
 {
 	CSignals copy(*this);
 	Hilbert(len);
@@ -1473,7 +1297,7 @@ EXP_CS double * CSignal::HilbertEnv(int len)
 }
 */
 
-EXP_CS CSignal& CSignal::Replace(CSignal &newsig, double t1, double t2)
+CSignal& CSignal::Replace(CSignal &newsig, double t1, double t2)
 { // signal portion between t1 and t2 is replaced by newsig
  // t1 and t2 are in ms
 //	double lastendtofnewsig = newsig.GetDeepestChain()->endt();
@@ -1495,7 +1319,7 @@ EXP_CS CSignal& CSignal::Replace(CSignal &newsig, double t1, double t2)
 }
 
 
-EXP_CS CSignal& CSignal::Insert(double timept, CSignal &newchunk)
+CSignal& CSignal::Insert(double timept, CSignal &newchunk)
 {
 	int id ;
 	// Be careful, this is not a virtual function. So, when called from CSignals, this is a pointer to CSignal
@@ -1576,14 +1400,14 @@ EXP_CS CSignal& CSignal::Insert(double timept, CSignal &newchunk)
 
 }
 
-EXP_CS double * CSignal::Truncate(double time_ms1, double time_ms2)
+double * CSignal::Truncate(double time_ms1, double time_ms2)
 { // Returns integer buffer pointer, to "extract" a signals object, use Take() member function
 	int id1 = round(time_ms1/1000.*fs);
 	int id2 = round(time_ms2/1000.*fs)-1;
 	return Truncate(id1, id2);
 }
 
-EXP_CS double * CSignal::Truncate(int id1, int id2, int code)
+double * CSignal::Truncate(int id1, int id2, int code)
 {
 	id1 = max(0, id1);
 	if (id1>id2) {
@@ -1612,14 +1436,14 @@ EXP_CS double * CSignal::Truncate(int id1, int id2, int code)
 	return buf;
 }
 
-EXP_CS double * CSignal::Silence(double dur_ms)
+double * CSignal::Silence(double dur_ms)
 {
 	int nSamplesNeeded = round(dur_ms/1000.*fs); 
 	double *p = Silence(nSamplesNeeded);
 	return p;
 }
 
-EXP_CS double * CSignal::Silence(int nsamples)
+double * CSignal::Silence(int nsamples)
 {
 	Reset();
 	UpdateBuffer(nsamples); //allocate memory if necessary
@@ -1629,14 +1453,14 @@ EXP_CS double * CSignal::Silence(int nsamples)
 	return buf;
 }
 
-EXP_CS double * CSignal::DC(double dur_ms)
+double * CSignal::DC(double dur_ms)
 {
 	int nSamplesNeeded = round(dur_ms/1000.*fs); 
 	double *p = DC(nSamplesNeeded);
 	return p;
 }
 
-EXP_CS double * CSignal::DC(int nsamples)
+double * CSignal::DC(int nsamples)
 {
 	Reset();
 	UpdateBuffer(nsamples); //allocate memory if necessary
@@ -1644,7 +1468,7 @@ EXP_CS double * CSignal::DC(int nsamples)
 	return buf;
 }
 
-EXP_CS int CSignal::IsNull(double timept)
+int CSignal::IsNull(double timept)
 {
 	if (GetType()!=CSIG_AUDIO) return 0;
 	CSignal *p(this);
@@ -1660,7 +1484,7 @@ EXP_CS int CSignal::IsNull(double timept)
 	return 1;
 }
 
-EXP_CS int CSignal::GetType() const
+int CSignal::GetType() const
 {
 	if (nSamples==0) // empty
 	{
@@ -1678,7 +1502,7 @@ EXP_CS int CSignal::GetType() const
 	
 }
 
-EXP_CS vector<double> CSignal::Sum()
+vector<double> CSignal::Sum()
 {
 	vector<double> out ;
 	for (CSignal *p=this; p; p=p->chain)
@@ -1690,7 +1514,7 @@ EXP_CS vector<double> CSignal::Sum()
 	return out;
 }
 
-EXP_CS vector<double> CSignal::Mean()
+vector<double> CSignal::Mean()
 {
 	vector<double> out ;
 	for (CSignal *p=this; p; p=p->chain)
@@ -1702,7 +1526,7 @@ EXP_CS vector<double> CSignal::Mean()
 	return out;
 }
 
-EXP_CS vector<int> CSignal::MaxId()
+vector<int> CSignal::MaxId()
 {
 	vector<int> out;
 	double localMax(-1.e100);
@@ -1719,7 +1543,7 @@ EXP_CS vector<int> CSignal::MaxId()
 	return out;
 }
 
-EXP_CS vector<double> CSignal::Max()
+vector<double> CSignal::Max()
 {
 	vector<double> out ;
 	double localMax(-1.e100);
@@ -1734,7 +1558,7 @@ EXP_CS vector<double> CSignal::Max()
 	return out;
 }
 
-EXP_CS vector<int> CSignal::MinId()
+vector<int> CSignal::MinId()
 {
 	vector<int> out ;
 	double localMin(1.e100);
@@ -1751,7 +1575,7 @@ EXP_CS vector<int> CSignal::MinId()
 	return out;
 }
 
-EXP_CS vector<double> CSignal::Min()
+vector<double> CSignal::Min()
 {
 	vector<double> out ;
 	double localMin(1.e100);
@@ -1767,9 +1591,9 @@ EXP_CS vector<double> CSignal::Min()
 	return out;
 }
 
-#define FIRSIZE 225
+#ifndef NO_RESAMPLE
 
-EXP_CS double * CSignal::Resample(vector<int> newfs, vector<int> lengths, char *errstr)
+double * CSignal::Resample(vector<int> newfs, vector<int> lengths, char *errstr)
 { // This is not really for resampling but only used for the % operator with a vector (variable_ratio)
 	//Therefore, fs is not updated.
 	MakeChainless();
@@ -1820,7 +1644,7 @@ EXP_CS double * CSignal::Resample(vector<int> newfs, vector<int> lengths, char *
 	return buf;
 }
 
-EXP_CS double * CSignal::Resample(int newfs, char *errstr) // Revised in Dec09---noted for JHPARK
+double * CSignal::Resample(int newfs, char *errstr) // Revised in Dec09---noted for JHPARK
 {
 	MakeChainless();
 	errstr[0]=0;
@@ -1855,8 +1679,9 @@ EXP_CS double * CSignal::Resample(int newfs, char *errstr) // Revised in Dec09--
 	return buf;
 }
 
+#endif //NO_RESAMPLE
 
-EXP_CS void CSignal::UpSample(int cc)
+void CSignal::UpSample(int cc)
 {
 	MakeChainless();
 
@@ -1870,7 +1695,7 @@ EXP_CS void CSignal::UpSample(int cc)
 	*this = temp;
 }
 
-EXP_CS void CSignal::DownSample(int cc)
+void CSignal::DownSample(int cc)
 {
 	MakeChainless();
 
@@ -1883,21 +1708,21 @@ EXP_CS void CSignal::DownSample(int cc)
 	*this = temp;
 }
 
-EXP_CS int CSignal::Filter(const CSignal& num, const CSignal& den, char *errstr)
+int CSignal::Filter(const CSignal& num, const CSignal& den, char *errstr)
 {
 	int reqLeng = max(1, max(num.nSamples,den.nSamples) );
 	Filter(reqLeng, num.buf, den.buf);
 	return 1;
 }
 
-EXP_CS int CSignal::filtfilt(const CSignal& num, const CSignal& den, char *errstr)
+int CSignal::filtfilt(const CSignal& num, const CSignal& den, char *errstr)
 {
 	int reqLeng = max(1, max(num.nSamples,den.nSamples) );
 	filtfilt(reqLeng, num.buf, den.buf);
 	return 1;
 }
 
-EXP_CS void CSignal::Filter(int nTabs, double *num, double *den)
+void CSignal::Filter(int nTabs, double *num, double *den)
 {
 	double *out = new double[BufSize];
 	if (den[0]!=0.)
@@ -1908,13 +1733,13 @@ EXP_CS void CSignal::Filter(int nTabs, double *num, double *den)
 	buf = out;
 }
 
-EXP_CS void CSignal::Filter(int nTabs, double *num) // for FIR
+void CSignal::Filter(int nTabs, double *num) // for FIR
 {
 	double den(0.);
 	Filter(nTabs, num, &den);
 }
 
-EXP_CS void CSignal::filtfilt(int nTabs, double *num, double *den)
+void CSignal::filtfilt(int nTabs, double *num, double *den)
 {
 	MakeChainless();
 	//Transient edges not handled, only zero-padded edges 
@@ -1932,7 +1757,7 @@ EXP_CS void CSignal::filtfilt(int nTabs, double *num, double *den)
 	*this = out;
 }
 
-EXP_CS void CSignal::filtfilt(int nTabs, double *num)
+void CSignal::filtfilt(int nTabs, double *num)
 {
 	double *den = new double[nTabs];
 	memset((void*)den, 0, nTabs*sizeof(double));
@@ -1941,7 +1766,7 @@ EXP_CS void CSignal::filtfilt(int nTabs, double *num)
 	delete[] den;
 }
 
-EXP_CS void CSignal::ReverseTime()
+void CSignal::ReverseTime()
 {
 	MakeChainless();
 
@@ -1954,8 +1779,9 @@ EXP_CS void CSignal::ReverseTime()
 
 //#define RETURNNULL {	for (int i=0; i<nColons; i++) delete[] holder[i]; delete[] holder; return NULL;	}
 
+#ifndef NO_IIR
 
-EXP_CS int CSignal::IIR(int kind, int type, int order, double *freqs, double passRipple_dB, double stopFreqORAttenDB, char *errstr)
+int CSignal::IIR(int kind, int type, int order, double *freqs, double passRipple_dB, double stopFreqORAttenDB, char *errstr)
 {// kind: 1 butterworth, 2 Chebyshev, 3 Elliptic
 	// type: 1 lowpass, 2 bandpass, 3 highpass, 4 bandstop
 	MakeChainless();
@@ -2008,6 +1834,8 @@ EXP_CS int CSignal::IIR(int kind, int type, int order, double *freqs, double pas
 	return res;
 }
 
+#endif // NO_IIR
+
 std::string CSignal::string()
 {
 	int k;
@@ -2028,7 +1856,7 @@ char *CSignal::getString(char *str, const int size)
 	return str;
 }
 
-EXP_CS CSignal &CSignal::SetString(const char *str)
+CSignal &CSignal::SetString(const char *str)
 {
 	Reset(2);
 	UpdateBuffer(strlen(str));
@@ -2037,7 +1865,7 @@ EXP_CS CSignal &CSignal::SetString(const char *str)
 	return *this;
 }
 
-EXP_CS CSignal &CSignal::SetString(const char c)
+CSignal &CSignal::SetString(const char c)
 {
 	Reset(2);
 	if (c==0) return *this;
@@ -2099,7 +1927,7 @@ CSignal &CSignal::transpose1()
 }
 
 
-EXP_CS double *CSignal::Hamming(int len)
+double *CSignal::Hamming(int len)
 {
 	if (len <= 0)
 		throw "Length must be a positive integer.";
@@ -2111,7 +1939,7 @@ EXP_CS double *CSignal::Hamming(int len)
 }
 
 
-EXP_CS double *CSignal::Blackman(int len, double alp)
+double *CSignal::Blackman(int len, double alp)
 {
 	if (len <= 0)
 		throw "Length must be a positive integer.";
@@ -2122,7 +1950,7 @@ EXP_CS double *CSignal::Blackman(int len, double alp)
 	return buf;
 }
 
-EXP_CS int CSignal::WriteAXL(FILE* fp)
+int CSignal::WriteAXL(FILE* fp)
 {
 	CSignal *p(this);
 	int res;
@@ -2135,129 +1963,6 @@ EXP_CS int CSignal::WriteAXL(FILE* fp)
 		res = fwrite((void*)&p->tmark, sizeof(tmark),1,fp);
 		res = fwrite((void*)p->buf, sizeof(double),p->nSamples,fp);
 	}
-	return res;
-}
-
-
-EXP_CS double * CSignals::FFT(int len)
-{
-	MakeChainless();
-	len = min(nSamples,len);
-
-	double *in;
-	fftw_complex *out;
-	fftw_plan p;
-
-	in = (double*) fftw_malloc(sizeof(double) * len);
-	out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * len);
-	memcpy(in, buf, sizeof(double)*len);
-
-	p = fftw_plan_dft_r2c_1d(len, in, out, FFTW_ESTIMATE);
-	fftw_execute(p);
-
-	UpdateBuffer(len);
-	memcpy(buf, out[0], sizeof(double)*len);
-	if (next == NULL)	next = new CSignal(1);
-	next->UpdateBuffer(len);
-	memcpy(next->buf, out[1], sizeof(double)*len);
-	fftw_destroy_plan(p);
-	fftw_free(in); 
-	fftw_free(out);
-	return buf;
-}
-
-EXP_CS double * CSignals::iFFT(void)
-{
-	MakeChainless();
-	int len = nSamples;
-
-	fftw_complex *in;
-	double *out;
-	fftw_plan p;
-
-	out = (double*) fftw_malloc(sizeof(double) * len);
-	in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * len);
-	memcpy(in[0], buf, sizeof(double)*len);
-	memcpy(in[1], next->buf, sizeof(double)*len);
-
-	p = fftw_plan_dft_c2r_1d(len, in, out, FFTW_ESTIMATE);
-
-	fftw_execute(p);
-
-	for (int k=0; k<len; k++) out[k] /= len;
-	memcpy(buf, out, sizeof(double)*len);
-	delete next; next = NULL;
-	fftw_destroy_plan(p);
-	fftw_free(in); 
-	fftw_free(out);
-	return buf;
-}
-
-EXP_CS double * CSignals::Hilbert(int len)
-{
-	CSignal::Hilbert(len);
-	if (next!=NULL) next->Hilbert(len);
-	return buf;
-}
-
-EXP_CS double * CSignals::HilbertEnv(int len)
-{
-	CSignal::HilbertEnv(len);
-	if (next!=NULL) next->HilbertEnv(len);
-	return buf;
-}
-
-EXP_CS double * CSignals::ShiftFreq(double shift)
-{
-	CSignal::ShiftFreq(shift);
-	if (next!=NULL) next->ShiftFreq(shift);
-	return buf;
-}
-
-
-EXP_CS int CSignals::GetType() const
-{
-	if (cell.size()>0)
-		return CSIG_CELL;
-	else 
-		return CSignal::GetType();
-}
-
-EXP_CS int CSignals::ReadAXL(FILE* fp)
-{
-	int res,res2;
-	int nChains;
-	res = fread((void*)&fs, sizeof(fs),1,fp);
-	res2 = ftell(fp);
-	Reset(fs);
-	res = fread((void*)&nChains, sizeof(nChains),1,fp);
-	res2 = ftell(fp);
-	for (int k=0; k<nChains; k++)
-	{
-		int cum(0), _nSamples;
-		CSignal readsig(fs);
-		res = fread((void*)&_nSamples, sizeof(nSamples),1,fp); // readsig.nSamples shouldn't be directly modified, it should be done inside UpdateBuffer()
-		res2 = ftell(fp);
-		readsig.UpdateBuffer(_nSamples);
-		res = fread((void*)&readsig.tmark, sizeof(tmark),1,fp);
-		res2 = ftell(fp);
-		while(cum<readsig.nSamples)
-		{
-			res = fread((void*)&readsig.buf[cum], sizeof(double),readsig.nSamples-cum,fp);
-			cum += res;
-		}
-		AddChain(readsig);
-		res2 = ftell(fp);
-	}
-	MergeChains();
-	return 1;
-}
-
-EXP_CS int CSignals::WriteAXL(FILE* fp)
-{
-	int res = CSignal::WriteAXL(fp);
-	if (next)
-		res += next->WriteAXL(fp);
 	return res;
 }
 
@@ -2314,14 +2019,6 @@ EXP_CS CSignals::CSignals(FILE* fp)
 {
 	ReadAXL(fp);
 }
-
-EXP_CS CSignals::CSignals(const char* wavname)
-:next(NULL)
-{
-	char errstr[256];
-	Wavread(wavname, errstr);
-}
-
 
 EXP_CS CSignals::~CSignals()
 {
@@ -2408,6 +2105,13 @@ EXP_CS CSignals& CSignals::Take(CSignals& out, int id1, int id2)
 	if (next!=NULL) next->Take(*out.next, id1, id2);
 	return out;
 }
+
+EXP_CS void CSignals::Dramp(double dur_ms, int beginID)
+{
+	CSignal::Dramp(dur_ms, beginID);
+	if (next!=NULL) next->Dramp(dur_ms, beginID);
+}
+
 EXP_CS CSignals& CSignals::Trim(double begin_ms, double end_ms)
 {
 	CSignal::Trim(begin_ms, end_ms);
@@ -2542,6 +2246,7 @@ EXP_CS void CSignals::UpSample(int cc)
 	if (next!=NULL) next->UpSample(cc);
 }
 
+#ifndef NO_RESAMPLE
 EXP_CS double * CSignals::Resample(int newfs, char *errstr)
 {
 	CSignal::Resample(newfs, errstr);
@@ -2562,6 +2267,8 @@ EXP_CS double * CSignals::fm2(CSignal flutter, int multiplier, char *errstr)
 	if (next!=NULL) next->fm2(flutter, multiplier, errstr);
 	return buf;
 }
+
+#endif // NO_RESAMPLE
 
 EXP_CS void CSignals::Filter(int nTabs, double *num, double *den)
 {
@@ -2613,7 +2320,7 @@ EXP_CS bool CSignals::operator==(const CSignals &sec) const
 		return true;
 	}
 }
-EXP_CS double CSignals::MakeChainless(double dur, int *pNewFS)
+EXP_CS double CSignals::MakeChainless()
 {
 	CSignal::MakeChainless();
 	if (next!=NULL) 
@@ -2642,4 +2349,311 @@ EXP_CS CSignals &CSignals::each(double (*fn)(double, double), datachunk &arg2)
 	CSignal::each(fn, arg2);
 	if (next) 	next->each(fn, arg2);
 	return *this;
+}
+
+#ifndef NO_SF
+
+EXP_CS CSignals::CSignals(const char* wavname)
+:next(NULL)
+{
+	char errstr[256];
+	Wavread(wavname, errstr);
+
+}
+
+EXP_CS int CSignals::Wavread(const char *wavname, char *errstr)
+{
+	SNDFILE *wavefileID;
+	SF_INFO sfinfo ;
+	sf_count_t count ;
+	if ((wavefileID = sf_open (wavname, SFM_READ, &sfinfo)) == NULL)
+	{	sprintf(errstr, "Unable to open audio file '%s'\n", wavname);
+		sf_close (wavefileID) ;
+		return NULL;	}
+	if (sfinfo.channels>2) { strcpy(errstr, "Up to 2 channels (L R) are allowed in AUX--we have two ears, dude!"); return NULL;}
+	Reset(sfinfo.samplerate);
+	if (sfinfo.channels==1)
+	{
+		UpdateBuffer((int)sfinfo.frames);
+		count = sf_read_double (wavefileID, buf, sfinfo.frames);  // common.h
+	}
+	else
+	{
+		double *buffer = new double[(size_t)sfinfo.channels*(int)sfinfo.frames];
+		count = sf_read_double (wavefileID, buffer, sfinfo.channels*sfinfo.frames);  // common.h
+
+		double (*buf3)[2];
+		next = new CSignal(sfinfo.samplerate);
+		int m(0);
+		buf3 = (double (*)[2])&buffer[m++];
+		UpdateBuffer((int)sfinfo.frames);
+		for (int k=0; k<sfinfo.frames; k++)			buf[k] = buf3[k][0];
+		buf3 = (double (*)[2])&buffer[m++];
+		next->UpdateBuffer((int)sfinfo.frames);
+		for (int k=0; k<sfinfo.frames; k++)			next->buf[k] = buf3[k][0];
+		delete[] buffer;
+	}
+	sf_close (wavefileID) ;
+	return 1;
+}
+
+EXP_CS int CSignals::Wavwrite(const char *wavname, char *errstr, std::string wavformat)
+{
+	MakeChainless();
+	SF_INFO sfinfo ;
+	SNDFILE *wavefileID;
+	sfinfo.channels = (next) ? 2 : 1; 
+	if (wavformat.length()==0)
+		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_PCM_16; // default
+	else if (wavformat=="8")
+		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_PCM_U8;
+	else if (wavformat=="16")
+		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_PCM_16;
+	else if (wavformat=="24")
+		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_PCM_24;
+	else if (wavformat=="32")
+		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_PCM_32;
+	else if (wavformat=="ulaw")
+		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_ULAW;
+	else if (wavformat=="alaw")
+		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_ALAW;
+	else if (wavformat=="adpcm1")
+		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_IMA_ADPCM;
+	else if (wavformat=="adpcm2")
+		sfinfo.format = SF_FORMAT_WAV + SF_FORMAT_MS_ADPCM;
+//	else if (wavformat=="vorbis")
+//		sfinfo.format = SF_FORMAT_OGG + SF_FORMAT_VORBIS; // not available ...  ogg.c requires external lib which I don't have yet. bjkwon 03/19/2016
+	else
+	{	sprintf(errstr, "Supported waveformat---8, 16, 24, 32, ulaw, alaw, adpcm1 or adpcm2.\n", wavname);
+		return NULL;	}
+	sfinfo.frames = nSamples;
+	sfinfo.samplerate = fs;
+	sfinfo.sections = sfinfo.seekable = 1;
+	if ((wavefileID = sf_open (wavname, SFM_WRITE, &sfinfo)) == NULL)
+	{	sprintf(errstr, "Unable to open/write audio file to '%s'\n", wavname);
+		sf_close (wavefileID) ;
+		return NULL;	}
+	if (sfinfo.channels==1)
+		sf_writef_double(wavefileID, buf, nSamples);
+	else
+	{
+		double *buffer = new double[(size_t)sfinfo.channels*nSamples];
+		double (*buf3)[2];
+		int m(0);
+		// it should not be p && m<2 but just m<2, because p will never be NULL (why? next is CSignal, not CSignals)
+		for (CSignals *p = this; p && m<2; p=(CSignals*)p->next, m++)
+		{
+			buf3 = (double (*)[2])&buffer[m];
+			for (int k=0; k<nSamples; k++)			
+				buf3[k][0] = p->buf[k];
+		}
+		sf_writef_double(wavefileID, buffer, nSamples);
+		delete[] buffer;
+	}
+	sf_close (wavefileID) ;
+	return 1;
+}
+#endif // NO_SF
+
+#ifdef _WINDOWS
+EXP_CS void CSignals::PlayArray(char *errstr)
+{
+	PlayArray(0, errstr);
+}
+
+EXP_CS void CSignals::PlayArray(int DevID, char *errstr)
+{ // returns a negative number if error occurrs
+	PlayArray(DevID, 0, NULL, 2, errstr); 
+	// This is how you play in blocking mode (specify 2 for the nProgReport even though you are not utilizing any messaging back to hWnd.. This is just due to the way wavBuffer2snd is written in waves.cpp)
+	// Jan 19, 2013. BJ Kwon
+}
+
+EXP_CS void CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr, int loop)
+{// returns a negative number if error occurrs
+ // This play the sound by specified block duration, generating event notification in every block
+ // block_dur_ms is adjusted by the quantization of fs. Therefore, user should check if it has beend adjusted during this call.
+ 	int nSamples4Block = (int)(*block_dur_ms/(1000./(double)fs)+.5);
+	*block_dur_ms = (double) nSamples4Block *1000. /(double)fs;
+	double _nBlocks = (double)nSamples / nSamples4Block;
+	int nBlocks = (int)_nBlocks;
+	if (_nBlocks - (double)nBlocks > 0.1) nBlocks++;
+	PlayArray(DevID, userDefinedMsgID, hApplWnd, nBlocks, errstr, loop);
+}
+
+EXP_CS void CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr)
+{// returns a negative number if error occurrs
+ // This play the sound by specified block duration, generating event notification in every block
+ // block_dur_ms is adjusted by the quantization of fs. Therefore, user should check if it has beend adjusted during this call.
+ 	int nSamples4Block = (int)(*block_dur_ms/(1000./(double)fs)+.5);
+	*block_dur_ms = (double) nSamples4Block *1000. /(double)fs;
+	double _nBlocks = (double)nSamples / nSamples4Block;
+	int nBlocks = (int)_nBlocks;
+	if (_nBlocks - (double)nBlocks > 0.1) nBlocks++;
+	PlayArrayNext(DevID, userDefinedMsgID, hApplWnd, nBlocks, errstr);
+}
+
+short * CSignals::makebuffer(int &nChan)
+{	//For now this is only 16-bit playback (Sep 2008)
+	short *Buffer2Play;
+	MakeChainless();
+	if (next!=NULL)
+	{
+		double *buf2 = next->buf;
+		Buffer2Play = new short[nSamples*2];
+		for (int i=0; i<nSamples; ++i) {
+			Buffer2Play[i*2] = (short)(_double_to_24bit(buf[i]) >> 8);
+			Buffer2Play[i*2+1] = (short)(_double_to_24bit(buf2[i]) >> 8);
+		}
+		nChan=2;
+	}
+	else
+	{
+		Buffer2Play = new short[nSamples];
+		_double_to_short(buf, Buffer2Play, nSamples);
+		nChan=1;
+	}
+	return Buffer2Play;
+}
+
+EXP_CS void CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr, int loop)
+{// Re-do error treatment 6/1/2016 bjk
+	errstr[0]=0;
+	int nChan, ecode(MMSYSERR_NOERROR);
+	short *Buffer2Play = makebuffer(nChan);
+	PlayBufAsynch16(DevID, Buffer2Play, nSamples, nChan, fs, userDefinedMsgID, hApplWnd, nProgReport, &ecode, loop, errstr);
+}
+
+EXP_CS void CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr)
+{
+	errstr[0]=0;
+	int nChan, ecode(MMSYSERR_NOERROR);
+	short *Buffer2Play = makebuffer(nChan);
+	continuePlay(DevID, Buffer2Play, nSamples, nChan, userDefinedMsgID, nProgReport, errstr);
+}
+
+#endif
+
+#ifndef NO_FFTW
+
+EXP_CS double * CSignals::FFT(int len)
+{
+	MakeChainless();
+	len = min(nSamples,len);
+
+	double *in;
+	fftw_complex *out;
+	fftw_plan p;
+
+	in = (double*) fftw_malloc(sizeof(double) * len);
+	out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * len);
+	memcpy(in, buf, sizeof(double)*len);
+
+	p = fftw_plan_dft_r2c_1d(len, in, out, FFTW_ESTIMATE);
+	fftw_execute(p);
+
+	UpdateBuffer(len);
+	memcpy(buf, out[0], sizeof(double)*len);
+	if (next == NULL)	next = new CSignal(1);
+	next->UpdateBuffer(len);
+	memcpy(next->buf, out[1], sizeof(double)*len);
+	fftw_destroy_plan(p);
+	fftw_free(in); 
+	fftw_free(out);
+	return buf;
+}
+
+EXP_CS double * CSignals::iFFT(void)
+{
+	MakeChainless();
+	int len = nSamples;
+
+	fftw_complex *in;
+	double *out;
+	fftw_plan p;
+
+	out = (double*) fftw_malloc(sizeof(double) * len);
+	in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * len);
+	memcpy(in[0], buf, sizeof(double)*len);
+	memcpy(in[1], next->buf, sizeof(double)*len);
+
+	p = fftw_plan_dft_c2r_1d(len, in, out, FFTW_ESTIMATE);
+
+	fftw_execute(p);
+
+	for (int k=0; k<len; k++) out[k] /= len;
+	memcpy(buf, out, sizeof(double)*len);
+	delete next; next = NULL;
+	fftw_destroy_plan(p);
+	fftw_free(in); 
+	fftw_free(out);
+	return buf;
+}
+
+EXP_CS double * CSignals::Hilbert(int len)
+{
+	CSignal::Hilbert(len);
+	if (next!=NULL) next->Hilbert(len);
+	return buf;
+}
+
+EXP_CS double * CSignals::HilbertEnv(int len)
+{
+	CSignal::HilbertEnv(len);
+	if (next!=NULL) next->HilbertEnv(len);
+	return buf;
+}
+
+EXP_CS double * CSignals::ShiftFreq(double shift)
+{
+	CSignal::ShiftFreq(shift);
+	if (next!=NULL) next->ShiftFreq(shift);
+	return buf;
+}
+
+#endif
+
+EXP_CS int CSignals::GetType() const
+{
+	if (cell.size()>0)
+		return CSIG_CELL;
+	else 
+		return CSignal::GetType();
+}
+
+EXP_CS int CSignals::ReadAXL(FILE* fp)
+{
+	int res,res2;
+	int nChains;
+	res = fread((void*)&fs, sizeof(fs),1,fp);
+	res2 = ftell(fp);
+	Reset(fs);
+	res = fread((void*)&nChains, sizeof(nChains),1,fp);
+	res2 = ftell(fp);
+	for (int k=0; k<nChains; k++)
+	{
+		int cum(0), _nSamples;
+		CSignal readsig(fs);
+		res = fread((void*)&_nSamples, sizeof(nSamples),1,fp); // readsig.nSamples shouldn't be directly modified, it should be done inside UpdateBuffer()
+		res2 = ftell(fp);
+		readsig.UpdateBuffer(_nSamples);
+		res = fread((void*)&readsig.tmark, sizeof(tmark),1,fp);
+		res2 = ftell(fp);
+		while(cum<readsig.nSamples)
+		{
+			res = fread((void*)&readsig.buf[cum], sizeof(double),readsig.nSamples-cum,fp);
+			cum += res;
+		}
+		AddChain(readsig);
+		res2 = ftell(fp);
+	}
+	MergeChains();
+	return 1;
+}
+
+EXP_CS int CSignals::WriteAXL(FILE* fp)
+{
+	int res = CSignal::WriteAXL(fp);
+	if (next)
+		res += next->WriteAXL(fp);
+	return res;
 }

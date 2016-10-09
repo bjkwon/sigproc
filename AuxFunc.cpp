@@ -226,23 +226,7 @@ void aux_randperm(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	}
 }
 
-void aux_fmm(CAstSig &ast, const AstNode *pnode, const AstNode *p)
-{
-	const char *fnsigs[] = {"(audio_signal, freq_variation_array)", 0};
-	checkNumArgs(pnode, p, fnsigs, 2, 2);
-	CSignals audio = ast.Compute(p);
-	checkAudioSig(pnode, audio, "first arg must be audio.");
-	char errstr[256];
-	int multiplier = 10;
-	CSignals param = ast.Compute(p->next);
-	if (param.GetType()==CSIG_STRING || param.GetType()==CSIG_CELL) 
-		throw CAstException(pnode, p->next, fnsigs, "2nd argument must be either audio or vector.");
-	if (param.nSamples >= audio.nSamples/10)
-		throw CAstException(pnode, p->next, fnsigs, "2nd argument must have 1/10 or less the length of the 1st arg.");
-	ast.Sig = audio;
-	if (ast.Sig.fm2(param, multiplier, errstr)==NULL)
-		throw CAstException(pnode, p->next, fnsigs, string(errstr));
-}
+
 
 void aux_pitchange(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
@@ -250,25 +234,7 @@ void aux_pitchange(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 
 }
 
-void aux_shift_spectrum(CAstSig &ast, const AstNode *pnode, const AstNode *p)
-{ // $ operator
-	const char *fnsigs[] = {
-		"(signal, scalar)", 0};
-	checkNumArgs(pnode, p, fnsigs, 2, 2);
-	char errstr[256] = "";
-	ast.Compute(p->next);
-	if (ast.Sig.IsScalar())
-	{
-		double param = ast.Sig.value();
-		ast.Compute(p);
-		if (ast.Sig.nSamples <= 1)
-			throw CAstException(pnode, p, fnsigs, "1st argument must be a signal.");
-		int orgfs = ast.Sig.GetFs();
-		ast.Sig.ShiftFreq(param);
-	}
-	else
-		throw CAstException(pnode, p, fnsigs, "2nd argument must be a scalar.");
-}
+#ifndef NO_RESAMPLE
 
 void aux_caret(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 { // % operator
@@ -301,6 +267,25 @@ void aux_caret(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		if (!ast.Sig.Resample(fsholder, lengthholder, errstr)) throw errstr;
 	}
 }
+
+void aux_fmm(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	const char *fnsigs[] = {"(audio_signal, freq_variation_array)", 0};
+	checkNumArgs(pnode, p, fnsigs, 2, 2);
+	CSignals audio = ast.Compute(p);
+	checkAudioSig(pnode, audio, "first arg must be audio.");
+	char errstr[256];
+	int multiplier = 10;
+	CSignals param = ast.Compute(p->next);
+	if (param.GetType()==CSIG_STRING || param.GetType()==CSIG_CELL) 
+		throw CAstException(pnode, p->next, fnsigs, "2nd argument must be either audio or vector.");
+	if (param.nSamples >= audio.nSamples/10)
+		throw CAstException(pnode, p->next, fnsigs, "2nd argument must have 1/10 or less the length of the 1st arg.");
+	ast.Sig = audio;
+	if (ast.Sig.fm2(param, multiplier, errstr)==NULL)
+		throw CAstException(pnode, p->next, fnsigs, string(errstr));
+}
+#endif //NO_RESAMPLE
 
 void processEscapes(string &str)
 {
@@ -594,6 +579,8 @@ void aux_error(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	throw CAstException(pnode, "User raised error - " + errmsg);
 }
 
+#ifndef NO_SF
+
 void aux_wave(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
 	const char *fnsigs[] = {
@@ -620,6 +607,31 @@ void aux_wave(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	}
 }
 
+void aux_wavwrite(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	char secondbuf[MAX_PATH];
+	const char *fnsigs[] = {
+		"(signal, filename)", 0};
+	checkNumArgs(pnode, p, fnsigs, 2, 3);
+	string filename = ast.MakeFilename(ast.ComputeString(p->next), "wav");
+	CAstSig _ast(&ast);
+	_ast.Compute(p);
+	checkAudioSig(pnode, ast.Sig);
+	if (p->next->next!=NULL)
+	{
+		CSignals second = ast.Compute(p->next->next);
+		if (second.GetFs()!=2) throw "3rd argument must be a string.";
+		second.getString(secondbuf,MAX_PATH);
+	}
+	else
+		secondbuf[0]=0;
+	char errStr[256];
+	if (!_ast.Sig.Wavwrite(filename.c_str(), errStr, secondbuf))
+		throw errStr;
+}
+
+
+#endif // NO_SF
 
 
 
@@ -737,10 +749,12 @@ void aux_file(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 
 			ast.Sig = tempast.Sig;
 		}
+#ifndef NO_SF
 		else if (string(_strlwr(ext))==".wav")
 		{
 			aux_wave(ast,pnode,p);
 		}
+#endif // NO_SF
 	} catch (const CAstException &) {
 		throw;
 	}
@@ -897,6 +911,29 @@ void aux_ones(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		ast.Sig.buf[i] = 1;
 }
 
+
+#ifndef NO_FFTW
+
+void aux_shift_spectrum(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{ // $ operator
+	const char *fnsigs[] = {
+		"(signal, scalar)", 0};
+	checkNumArgs(pnode, p, fnsigs, 2, 2);
+	char errstr[256] = "";
+	ast.Compute(p->next);
+	if (ast.Sig.IsScalar())
+	{
+		double param = ast.Sig.value();
+		ast.Compute(p);
+		if (ast.Sig.nSamples <= 1)
+			throw CAstException(pnode, p, fnsigs, "1st argument must be a signal.");
+		int orgfs = ast.Sig.GetFs();
+		ast.Sig.ShiftFreq(param);
+	}
+	else
+		throw CAstException(pnode, p, fnsigs, "2nd argument must be a scalar.");
+}
+
 void aux_fft(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
 	const string fname = pnode->str;
@@ -975,6 +1012,8 @@ void aux_hilbert(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	checkAudioSig(pnode,  ast.Sig);
 	ast.Sig.Hilbert(ast.Sig.nSamples);
 };
+
+#endif //NO_FFTW
 
 void aux_filt(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
@@ -1117,6 +1156,8 @@ void aux_rms(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	ast.Sig *= rms.each(exp).transpose1();
 }
 
+#ifndef NO_IIR
+
 void aux_iir(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
 	int type, kind(1), norder(4);
@@ -1195,6 +1236,7 @@ void aux_iir(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	}
 	ast.Sig = sigX; 
 }
+#endif // NO_IIR
 
 void aux_cabs(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
@@ -1247,29 +1289,6 @@ void aux_left_right(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	delete ast.Sig.next;
 	ast.Sig.next = NULL;
 };
-
-void aux_wavwrite(CAstSig &ast, const AstNode *pnode, const AstNode *p)
-{
-	char secondbuf[MAX_PATH];
-	const char *fnsigs[] = {
-		"(signal, filename)", 0};
-	checkNumArgs(pnode, p, fnsigs, 2, 3);
-	string filename = ast.MakeFilename(ast.ComputeString(p->next), "wav");
-	CAstSig _ast(&ast);
-	_ast.Compute(p);
-	checkAudioSig(pnode, ast.Sig);
-	if (p->next->next!=NULL)
-	{
-		CSignals second = ast.Compute(p->next->next);
-		if (second.GetFs()!=2) throw "3rd argument must be a string.";
-		second.getString(secondbuf,MAX_PATH);
-	}
-	else
-		secondbuf[0]=0;
-	char errStr[256];
-	if (!_ast.Sig.Wavwrite(filename.c_str(), errStr, secondbuf))
-		throw errStr;
-}
 
 void aux_audio(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
@@ -1502,13 +1521,15 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 
 	//The following functions produces audio output(s).
 	if (fname == "tone")			aux_tone(*this, pnode, p);
-	else if (fname == "fmm")		aux_fmm(*this, pnode, p);
 	else if (fname == "fm")			aux_fm(*this, pnode, p);
 	else if (fname == "noise" ||
 			 fname == "gnoise" ||
 			 fname == "silence" ||
 			 fname == "dc" )		aux_tparamonly(*this, pnode, p);
+#ifndef NO_SF
 	else if (fname == "wave")		aux_wave(*this, pnode, p);
+	else if (fname == "wavwrite")	aux_wavwrite(*this, pnode, p);
+#endif // NO_IIR
 	else if (fname == "audio")		aux_audio(*this, pnode, p); 
 	else if (fname == "interp")		aux_interp(*this, pnode, p); // Special kind... not an audio signal in a strict sense
 	else if (fname == "hann" ||
@@ -1518,18 +1539,19 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	//The following functions take only audio argument(s)---anything that involves time, fs or rms
 	else if (fname == "ramp")		aux_ramp(*this, pnode, p);
 	else if (fname == "am")			aux_am(*this, pnode, p);
+#ifndef NO_IIR
 	else if (fname == "rms")		aux_rms(*this, pnode, p);
 	else if (fname == "lpf" ||
 			 fname == "hpf" ||
 			 fname == "bpf" ||
 			 fname == "bsf" )		aux_iir(*this, pnode, p);
+#endif // NO_IIR
 	else if (fname == "stereo")		aux_stereo(*this, pnode, p);
 	else if (fname == "left" ||
 			 fname == "right" ||
 			fname == "real" ||
 			 fname == "imag" )		aux_left_right(*this, pnode, p);
 	else if (fname == "angle")		aux_angle(*this, pnode, p);
-	else if (fname == "wavwrite")	aux_wavwrite(*this, pnode, p);
 
 	else if (fname == "vector")		aux_vector(*this, pnode, p); 
 
@@ -1565,8 +1587,10 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	else if (fname == "randperm")	aux_randperm(*this, pnode, p);
 	else if (fname == ":")			aux_colon(*this, pnode, p);
 	else if (fname == "pch")		aux_pitchange(*this, pnode, p);
+#ifndef NO_RESAMPLE
+	else if (fname == "fmm")		aux_fmm(*this, pnode, p);
 	else if (fname == "caret")		aux_caret(*this, pnode, p);
-	else if (fname == "shift_spectrum")	aux_shift_spectrum(*this, pnode, p);
+#endif //NO_RESAMPLE
 	else if (fname == "sscanf")		aux_sscanf(*this, pnode, p);
 	else if (fname == "sprintf")	aux_sprintf(*this, pnode, p);
 	else if (fname == "fprintf")	aux_fprintf(*this, pnode, p);
@@ -1577,15 +1601,17 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	else if (fname == "eval")		aux_eval(*this, pnode, p);
 	else if (fname == "zeros")		aux_zeros(*this, pnode, p);
 	else if (fname == "ones")		aux_ones(*this, pnode, p);
+#ifndef NO_FFTW
 	else if (fname == "fft")		aux_fft(*this, pnode, p);
 	else if (fname == "ifft")		aux_ifft(*this, pnode, p);
 	else if (fname == "isnull")		aux_isnull(*this, pnode, p);
 	else if (fname == "envelope")	aux_envelope(*this, pnode, p);
 	else if (fname == "hilbert")	aux_hilbert(*this, pnode, p);
 	else if (fname == "shift")		aux_shift(*this, pnode, p);
+	else if (fname == "shift_spectrum")	aux_shift_spectrum(*this, pnode, p);
 	else if (fname == "filt" ||
 			 fname == "filtfilt")	aux_filt(*this, pnode, p);
-
+#endif //NO_FFTW
 	//The following functions take only vector argument(s)--prohibiting the use of audio signal applied to this 
 	else if (fname == "sort")		aux_sort(*this, pnode, p);
 

@@ -495,11 +495,6 @@ EXP_CS DWORD WinMMGetVolume()
 
 }
 
-EXP_CS int WinMMSetVolume(DWORD vol)
-{
-	MMRESULT res = waveOutSetVolume(pWP->hwo, vol);
-	return res;
-}
 
 EXP_CS void PauseResumePlay(void *pWavePlay, bool fOnOff)
 {

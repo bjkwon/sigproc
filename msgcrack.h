@@ -50,6 +50,7 @@
 #define HANDLE_WM_FL_ARRIVED(hwnd, wParam, lParam, fn) \
     ((fn)(LOWORD(wParam), HIWORD(wParam), (void*)lParam), 0L)
 
+
 //void onOpenMap(char* mapfilefull)
 #define HANDLE_WM__OPEN_MAP(hwnd, wParam, lParam, fn) \
     ((fn)((char*)wParam), 0L)

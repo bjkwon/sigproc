@@ -1140,8 +1140,3 @@ CAstSigEnv::~CAstSigEnv()
 	for (it=UDFs.begin(); it!=UDFs.end(); it++)
 		yydeleteAstNode(it->second, 0);
 }
-
-void CAstSigEnv::SetPlayBlockSize(double _block) // soon to be deleted 7/15/2016 bjk
-{
-//	block=_block;
-}

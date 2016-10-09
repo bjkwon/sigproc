@@ -6,6 +6,8 @@
 #include <process.h>
 
 #define WM_PLOT_DONE	WM_APP+328
+#define WM__CLICKED_GCF	WM_APP+329
+
 #define MARKERSTR	"o+*.xsd^v<>ph"
 #define COLORSTR	"ymcrgbwk"
 
@@ -901,13 +903,16 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	MSG         msg ;
 	while (GetMessage (&msg, NULL, 0, 0))
 	{
+		CSignals gcf;
 		switch (msg.message)
 		{
 		case WM_PLOT_DONE:
 			ast.Sig.SetValue((double)(int)plotline);
-			HANDLE h = (HANDLE)msg.wParam;
-			CSignals gcf;
-			GetFigID(h, gcf);
+			GetFigID((HANDLE)msg.wParam, gcf);
+			ast.SetTag("gcf", gcf);
+			return;
+		case WM__CLICKED_GCF:
+			gcf.SetValue((double)(int)msg.wParam);
 			ast.SetTag("gcf", gcf);
 			return;
 		}
@@ -970,6 +975,16 @@ void aux_plotThread (PVOID var)
 	{ 
 		if (msg.message==WM_DESTROY || !cfig->m_dlg)	break;
 		if (msg.hwnd && !IsWindow(msg.hwnd)) 	break;
+		if (((msg.message>=WM_NCLBUTTONDOWN && msg.message<=WM_NCMBUTTONDBLCLK) || ((msg.message>=WM_LBUTTONDOWN && msg.message<=WM_MBUTTONDBLCLK)) ))
+		{
+			char buf[32];
+			int id;
+			GetWindowText(hFigDlg, buf, sizeof(buf));
+			int res = sscanf(buf,"Figure%d", &id);
+			CSignals tp((double)id);
+			mainast->SetTag("gcf", tp);
+		}
+
 		if (msg.message==WM_KEYDOWN && msg.wParam==17 && GetParent(msg.hwnd)==hFigDlg)
 			msg.hwnd = hFigDlg;
 		if (!TranslateAccelerator (cfig->m_dlg->hDlg, hAcc, &msg))
