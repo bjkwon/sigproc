@@ -47,44 +47,46 @@ CAstSig::CAstSig(const CAstSig &org)
 
 
 CAstSig::CAstSig(const CAstSig *env)
-: pAst(NULL), Script(""), statusMsg(""), fAllocatedAst(false), CallbackCIPulse(NULL), CallbackHook(env->CallbackHook)
+: pAst(NULL), pAst_context(NULL), Script(""), statusMsg(""), fAllocatedAst(false), CallbackCIPulse(NULL), CallbackHook(env->CallbackHook)
 {
 	initGlobals(env);
 }
 
 CAstSig::CAstSig(const char *str, const CAstSig *env)
-: pAst(NULL), statusMsg(""), fAllocatedAst(false), CallbackCIPulse(NULL), CallbackHook(env->CallbackHook)
+: pAst(NULL), pAst_context(NULL), statusMsg(""), fAllocatedAst(false), CallbackCIPulse(NULL), CallbackHook(env->CallbackHook)
 {
 	initGlobals(env);
 	SetNewScript(str);
 }
 
 CAstSig::CAstSig(AstNode *pnode, const CAstSig *env)
-: pAst(pnode), Script(""), statusMsg(""), fAllocatedAst(false), CallbackCIPulse(NULL), CallbackHook(env->CallbackHook)
+: pAst(pnode), pAst_context(NULL), Script(""), statusMsg(""), fAllocatedAst(false), CallbackCIPulse(NULL), CallbackHook(env->CallbackHook)
 {
 	initGlobals(env);
 }
 
 
 CAstSig::CAstSig(const int fs)
-: pAst(NULL), Script(""), statusMsg(""), fAllocatedAst(false), pEnv(new CAstSigEnv(fs)), CallbackCIPulse(NULL), CallbackHook(NULL)
+: pAst(NULL), pAst_context(NULL), Script(""), statusMsg(""), fAllocatedAst(false), pEnv(new CAstSigEnv(fs)), CallbackCIPulse(NULL), CallbackHook(NULL)
 {
 }
 
 CAstSig::CAstSig(const char *str, const int fs)
-: pAst(NULL), statusMsg(""), fAllocatedAst(false), pEnv(new CAstSigEnv(fs)), CallbackCIPulse(NULL), CallbackHook(NULL)
+: pAst(NULL), pAst_context(NULL), statusMsg(""), fAllocatedAst(false), pEnv(new CAstSigEnv(fs)), CallbackCIPulse(NULL), CallbackHook(NULL)
 {
 	SetNewScript(str);
 }
 
 CAstSig::CAstSig(AstNode *pnode, const int fs)
-: pAst(pnode), Script(""), statusMsg(""), fAllocatedAst(false), pEnv(new CAstSigEnv(fs)), CallbackCIPulse(NULL), CallbackHook(NULL)
+: pAst(pnode), pAst_context(NULL), Script(""), statusMsg(""), fAllocatedAst(false), pEnv(new CAstSigEnv(fs)), CallbackCIPulse(NULL), CallbackHook(NULL)
 {
 }
 
 
 CAstSig::~CAstSig()
 {
+	if (pAst_context)
+	{ int y=5;}
 	if (pEnv->RefCount > 0)
 		pEnv->RefCount--;
 	else
@@ -569,14 +571,24 @@ try {
 		break;
 	case NODE_RESTRING:
 		break;
+	case T_DUR:
+		Sig = Compute(pAst_context).alldur();
+		break;
 	case NODE_EXTRACT:
 		double t[2];
+		pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
+		pAst_context->type = T_ID;
+		pAst_context->str = (char*)malloc(strlen(pnode->child->str)+1);
+		strcpy(pAst_context->str, pnode->child->str);
 		p = p->next;
-		for (int i=0; i<2; i++,p=p->next) {
-			if (!Compute(p).IsScalar())
-				throw CAstException(p, "The arguments of extraction must be scalars.");
-			t[i] = Sig.value();
+		for (int k(0); k<2; k++, p=p->next) {
+			Sig = Compute(p);
+				if (!Sig.IsScalar())
+					throw CAstException(p, "The arguments of extraction must be scalars.");
+			t[k] = Sig.value();
 		}
+		yydeleteAstNode(pAst_context, 0);
+		pAst_context=NULL;
 		Compute(pnode->child);
 		checkAudioSig(pnode,  Sig);
 		Sig.Trim(t[0], t[1]);
@@ -672,11 +684,24 @@ try {
 			}
 		}
 		break;
+	case T_LENGTH:
+		tsig = Compute(pAst_context);
+		Sig.SetValue(tsig.nSamples);
+		break;
 	case NODE_CALL: // built-in function calls come here
 		if (p && !p->next /* only one argument */ && (psig = RetrieveTag(pnode->str))) {
 			if (psig->GetType()==CSIG_CELL) throw CAstException(p, "A cell array cannot be accessed with ( ).");
+
+			pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
+			pAst_context->type = T_ID;
+			pAst_context->str = (char*)malloc(strlen(pnode->str)+1);
+
+			strcpy(pAst_context->str, pnode->str);
 			// Extraction by indices
 			isig = Compute(p);
+			yydeleteAstNode(pAst_context, 0);
+			pAst_context=NULL;
+
 			mn = round(((datachunk)isig).Min());
 			mx = round(((datachunk)isig).Max());
 			if (mn < 1)

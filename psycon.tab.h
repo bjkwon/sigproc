@@ -69,9 +69,11 @@
      T_NUMBER = 284,
      T_STRING = 285,
      T_ID = 286,
-     T_NEGATIVE = 287,
-     T_POSITIVE = 288,
-     T_LOGIC_NOT = 289
+     T_DUR = 287,
+     T_LENGTH = 288,
+     T_NEGATIVE = 289,
+     T_POSITIVE = 290,
+     T_LOGIC_NOT = 291
    };
 #endif
 
@@ -82,7 +84,7 @@ typedef union YYSTYPE
 {
 
 /* Line 1676 of yacc.c  */
-#line 23 "psycon.y"
+#line 22 "psycon.y"
 
 	double dval;
 	char *str;
@@ -91,7 +93,7 @@ typedef union YYSTYPE
 
 
 /* Line 1676 of yacc.c  */
-#line 95 "psycon.tab.h"
+#line 97 "psycon.tab.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */

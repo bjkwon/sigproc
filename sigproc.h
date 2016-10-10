@@ -383,6 +383,7 @@ class CAstSig
 private:
 	static const int DefaultFs = 22050;
 	AstNode *pAst;
+	AstNode *pAst_context;
 	string Script;
 	bool fAllocatedAst, fExit, fBreak, fContinue;
 

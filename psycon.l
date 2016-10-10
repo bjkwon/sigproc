@@ -50,6 +50,10 @@ NUM	[[:digit:]]+"."?[[:digit:]]*([eE][+-]?[[:digit:]]+)?|"."[[:digit:]]+
 	yylval.dval = strtod(yytext, NULL);
 	return T_NUMBER;
 	}
+<PARENTH>size {
+	yylloc.last_column += yyleng;
+	return getTokenID(yytext);
+	}
 <BRACKET>\] {	/* closing bracket */
 	yylloc.last_column += yyleng;
 	yy_pop_state();

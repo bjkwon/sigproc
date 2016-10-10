@@ -960,8 +960,9 @@ CSignal& CSignal::Trim(double begin_ms, double end_ms)
 		ReverseTime();
 		return *this;
 	}
+	bool multipleChains(CountChains()>1);
 
-	if (CountChains()>1)
+	if (multipleChains)
 	{
 		CSignal *extracted;
 		bool loop(true);
@@ -972,6 +973,7 @@ CSignal& CSignal::Trim(double begin_ms, double end_ms)
 			if (extracted == &old) loop = false;
 		}
 		MakeChainless();
+		old2 = *this;
 	}
 	double endtime = tmark + dur();
 	if (begin_ms>=tmark && end_ms<=endtime) // normal
@@ -1007,7 +1009,7 @@ CSignal& CSignal::Trim(double begin_ms, double end_ms)
 		Trim(tmark, endtime);
 		tmark = _tmark;
 	}
-	if (CountChains()>1)
+	if (multipleChains)
 	{
 		tmarks.erase(remove_if(tmarks.begin(), tmarks.end(), [begin_ms](double x){return (x<=begin_ms);}), tmarks.end());
 		tmarks.erase(remove_if(tmarks.begin(), tmarks.end(), [end_ms](double x){return (x>=end_ms);}), tmarks.end());

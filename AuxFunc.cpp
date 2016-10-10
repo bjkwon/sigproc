@@ -1307,6 +1307,7 @@ void aux_vector(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	const char *fnsigs[] = {"(audio_vector)", 0};
 	checkNumArgs(pnode, p, fnsigs, 1, 1);
 	ast.Sig = ast.Compute(p);
+	ast.Sig.MakeChainless();
 	ast.Sig.SetFs(1);
 }
 

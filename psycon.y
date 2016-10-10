@@ -18,8 +18,6 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 %token-table
 %error-verbose
 %debug
-%expect 97
-%expect 98
 
 %union {
 	double dval;
@@ -54,9 +52,8 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 %token T_LOGIC_AND	"&&"
 %token T_LOGIC_OR	"||"
 
-
 %token <dval> T_NUMBER "number"
-%token <str> T_STRING "string"	T_ID "identifier"
+%token <str> T_STRING "string"	T_ID "identifier" T_DUR	"endt" T_LENGTH	"size"
 %type <pnode> block block_func line line_func stmt funcdef elseif_list condition case_list id_list arg arg_list vector matrix range exp_range assign exp initcell
 
 %right '='
@@ -623,6 +620,14 @@ exp: T_NUMBER
 	{
 		$$ = newAstNode(T_STRING, @$);
 		$$->str = $1;
+	}
+	| T_DUR
+	{
+		$$ = newAstNode(T_DUR, @$);
+	}
+	| T_LENGTH
+	{
+		$$ = newAstNode(T_LENGTH, @$);
 	}
 	| T_ID
 	{
