@@ -53,7 +53,7 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 %token T_LOGIC_OR	"||"
 
 %token <dval> T_NUMBER "number"
-%token <str> T_STRING "string"	T_ID "identifier" T_DUR	"endt" T_LENGTH	"size"
+%token <str> T_STRING "string"	T_ID "identifier" T_DUR	"fT" T_LENGTH	"fP"
 %type <pnode> block block_func line line_func stmt funcdef elseif_list condition case_list id_list arg arg_list vector matrix range exp_range assign exp initcell
 
 %right '='
@@ -623,6 +623,12 @@ exp: T_NUMBER
 	}
 	| T_DUR
 	{
+		$$ = newAstNode(T_DUR, @$);
+	}
+	| T_DUR '(' exp ')'
+	{
+		$$ = newAstNode(NODE_CALL, @$);
+ 		$$->str = $1;
 		$$ = newAstNode(T_DUR, @$);
 	}
 	| T_LENGTH

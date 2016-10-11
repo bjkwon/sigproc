@@ -16,6 +16,8 @@
 #include <complex>
 #include <cmath>
 
+#include <math.h> // ceil
+
 #define CRIT  100. // Threshold for computing rms is above 100th of its max
 
 #define RETURN_0_MSG(str) {	strcpy(errstr, str);		return 0;	}
@@ -950,6 +952,66 @@ CSignal& CSignal::MakeChains(vector<double> tmarks)
 	return (*this = out);
 }
 
+CSignal& CSignal::removeafter(double timems)
+{ // if timems is in the grid, the point is removed (but dur will be until that grid point)
+	vector<CSignal*> chains2remove;
+	for (CSignal *p(this); p; p=p->chain)
+	{
+		if (timems > p->tmark+p->dur()) continue; 
+		else if (timems > p->tmark) 
+		{
+			// no need to worry about p->tmark
+			// all points occuring on and after timems will be removed (dur will still be timems)
+			// if timems exceeds the grid of p->tmark, it won't be removed, so it is ceil.
+			p->nSamples = (int)ceil((timems-p->tmark)*fs/1000.);
+			chains2remove.push_back(p);
+		}
+		else
+		{
+			p->nSamples=0;
+			delete[] p->buf;
+			chains2remove.push_back(p);
+		}
+	}
+	for (size_t k(0); k<chains2remove.size(); k++)
+		chains2remove[k]->chain = NULL;
+	return *this;
+}
+
+CSignal& CSignal::timeshift(double timems)
+{ // if timems is in the grid, the point is kept.
+	int chainlevel(0);
+	CSignal *p(this);
+	for (; p ; p=p->chain)
+	{
+		if (timems > p->tmark+p->dur()) { chainlevel++; continue; }
+		if (timems < p->tmark) 
+			p->tmark -= timems;
+		else
+		{
+			// p->tmark should be zero, except for the small off-granular timing based on the difference between timems and p->tmark
+			// the decrease of points will step-up if timems exceeds the grid, so it is ceil.
+			int pointsless = (int)ceil((timems-p->tmark)*fs/1000.);
+			p->nSamples -= pointsless;
+			p->tmark = ( (double)pointsless - (timems-p->tmark)*fs/1000. ) * 1000./fs;
+		}
+	}
+	//all chains at and prior to chainlevel are cleared here.
+	p = this;
+	for (int k(0); k<chainlevel ; k++, p=p->chain)
+		delete[] p->buf;
+	if (p!=this) // or if chainlevel is non-zero 
+	{
+		// Make new chain after chainlevel. If p is NULL (make an empty CSignal object to return);
+		if (!p) {p = new CSignal;}
+		nSamples = p->nSamples;
+		tmark = p->tmark;
+		buf = p->buf;
+		chain = NULL;
+	}
+	return *this;
+}
+
 CSignal& CSignal::Trim(double begin_ms, double end_ms)
 {
 	if (begin_ms == end_ms) {Reset(); return *this;}
@@ -960,63 +1022,8 @@ CSignal& CSignal::Trim(double begin_ms, double end_ms)
 		ReverseTime();
 		return *this;
 	}
-	bool multipleChains(CountChains()>1);
-
-	if (multipleChains)
-	{
-		CSignal *extracted;
-		bool loop(true);
-		while( (extracted = old.ExtractDeepestChain(&dummy))!=&old || loop )
-		{
-			tmarks.push_back(extracted->tmark + extracted->dur());
-			tmarks.push_back(extracted->tmark);
-			if (extracted == &old) loop = false;
-		}
-		MakeChainless();
-		old2 = *this;
-	}
-	double endtime = tmark + dur();
-	if (begin_ms>=tmark && end_ms<=endtime) // normal
-	{
-		int ind1 = (int)((begin_ms-tmark)/1000.*fs+.5);
-		int ind2 = min((int)((end_ms-tmark)/1000.*fs+.5), nSamples-1);
-		int nSamplesNeeded = ind2-ind1+1;
-		UpdateBuffer(nSamplesNeeded);
-		for (int k=0; k<nSamplesNeeded; k++) buf[k] = old2.buf[ind1+k];
-		tmark=0;
-	}
-	else if (begin_ms>=tmark) // (begin_ms>=tmark && end_ms>endtime)
-	{
-		Trim(begin_ms, endtime);
-	}
-	else if (end_ms<=endtime) // (begin_ms<tmark && end_ms<=endtime)
-	{
-		if (end_ms>tmark)
-		{
-			double _tmark = tmark;
-			Trim(tmark, end_ms);
-			tmark = _tmark;
-		}
-		else
-		{
-			Reset();
-			tmark = end_ms;
-		}
-	}
-	else 
-	{
-		double _tmark = tmark;
-		Trim(tmark, endtime);
-		tmark = _tmark;
-	}
-	if (multipleChains)
-	{
-		tmarks.erase(remove_if(tmarks.begin(), tmarks.end(), [begin_ms](double x){return (x<=begin_ms);}), tmarks.end());
-		tmarks.erase(remove_if(tmarks.begin(), tmarks.end(), [end_ms](double x){return (x>=end_ms);}), tmarks.end());
-		tmarks.insert(tmarks.begin(),end_ms);//This is the problem spot.... 4/24/2016 12:35am
-		tmarks.push_back(begin_ms);
-		MakeChains(tmarks);
-	}
+	removeafter(end_ms);
+	timeshift(begin_ms);
 	return *this;
 }
 

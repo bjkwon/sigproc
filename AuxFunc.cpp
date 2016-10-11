@@ -1466,12 +1466,14 @@ void HandleExp1(const AstNode *pnode, CSignals &Sig)
 	if (p && p->type == NODE_ARGS)
 		p = p->child;
 
-	const char *fnsigs[] = {
-		"(signal)", 0};
+	const char *fnsigs[] = {"(signal)", 0};
 	checkNumArgs(pnode, p, fnsigs, 1, 1);
-
+	CSignals SecondCh;
 	if (Sig.next)
-		HandleExp1(pnode, *(CSignals*)Sig.next);
+	{
+		SecondCh = *(CSignal*)Sig.next; // this way, SecondCh.next is NULL
+		HandleExp1(pnode, SecondCh);
+	}
 	if (fname == "begint" || fname == "endt" || fname == "dur") 	checkAudioSig(pnode, Sig); 
 	int res; 
 	if (fname == "begint" || fname == "endt" || fname == "dur" || fname == "max" || fname == "min" || fname == "length" || fname == "mean" || fname == "sum" || fname == "maxid" || fname == "minid")
@@ -1500,13 +1502,11 @@ void HandleExp1(const AstNode *pnode, CSignals &Sig)
 		}
 		out.ReverseTime();
 		Sig = out; // put it back.
+		if (!SecondCh.IsEmpty())
+			Sig.SetNextChan(&SecondCh);
 	}
 	else
 		throw ("Unhandled AUX function: " + fname).c_str();
-
-	if (Sig.next)
-		Sig += (CSignals*)Sig.next; // I don't know what this means... 5/12/2016
-	delete Sig.next;
 }
 
 

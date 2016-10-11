@@ -50,7 +50,7 @@ NUM	[[:digit:]]+"."?[[:digit:]]*([eE][+-]?[[:digit:]]+)?|"."[[:digit:]]+
 	yylval.dval = strtod(yytext, NULL);
 	return T_NUMBER;
 	}
-<PARENTH>size {
+<PARENTH>fP {
 	yylloc.last_column += yyleng;
 	return getTokenID(yytext);
 	}
@@ -64,7 +64,7 @@ NUM	[[:digit:]]+"."?[[:digit:]]*([eE][+-]?[[:digit:]]+)?|"."[[:digit:]]+
 	yy_push_state(PARENTH);
 	return (unsigned char)yytext[0];
 	}
-<PARENTH>endt {
+<PARENTH>fT {
 	yylloc.last_column += yyleng;
 	return getTokenID(yytext);
 	}

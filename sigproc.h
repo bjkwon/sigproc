@@ -169,6 +169,9 @@ public:
 	CSignal& Take(CSignal& out, double begin_ms, double end_ms);
 
 	virtual CSignal& Trim(double begin_ms, double end_ms);
+	virtual CSignal& timeshift(double tp_ms);
+	virtual CSignal& removeafter(double timems);
+
 
 	int WriteAXL(FILE* fp);
 
@@ -296,6 +299,7 @@ public:
 	EXP_CS CSignals& operator>>=(const double delta);
 	EXP_CS CSignals& Take(CSignals& out, int id1, int id2);
 	EXP_CS CSignals& Trim(double begin_ms, double end_ms);
+//	EXP_CS CSignals& timeshift(double tp_ms);
 	EXP_CS void Dramp(double dur_ms, int beginID=0);
 	EXP_CS double * Modulate (double *env, int lenEnv);
 	EXP_CS CSignals& Insert(double timept, CSignals &newchunk);
