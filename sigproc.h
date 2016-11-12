@@ -73,9 +73,6 @@ public:
 	double Max(int &id);
 	double Max() {int id; return Max(id);}
 	double Mean() {return Sum()/(double)nSamples;}
-
-protected:
-	size_t BufSize;
 };
 
 class CSignal : public datachunk

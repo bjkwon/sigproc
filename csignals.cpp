@@ -106,25 +106,25 @@ void SwapCSignalsPutScalarSecond(CSignals &sig1, CSignals &sig2)
 }
 
 datachunk::datachunk()
-:nSamples(0), BufSize(0), buf(new double[1])
+:nSamples(0), buf(new double[1])
 {
 }
 
 datachunk::datachunk(double value)
-:nSamples(1), BufSize(1), buf(new double[1])
+:nSamples(1), buf(new double[1])
 {
 	SetValue(value);
 }
 
 datachunk::datachunk(const datachunk& src) 
-:nSamples(0), BufSize(0), buf(new double[1])
+:nSamples(0), buf(new double[1])
 {
 	*this = src;
 }
 
 
 datachunk::datachunk(double *y, int len)
-:nSamples(len), BufSize((size_t)(len*1.1)), buf(new double[BufSize])
+:nSamples(len), buf(new double[(int)(len*1.1)+1])
 {
 	memcpy((void*)buf, (void*)y, sizeof(double)*len);
 }
@@ -136,7 +136,6 @@ datachunk& datachunk::operator=(const datachunk& rhs)
 	{
 		if (nSamples< rhs.nSamples) {delete[] buf; buf = new double[rhs.nSamples];}
 		nSamples = rhs.nSamples;
-		BufSize = rhs.BufSize;
 //		val = rhs.val;
 		memcpy(buf, rhs.buf, sizeof(double)*nSamples);
 	}
@@ -150,11 +149,11 @@ datachunk::~datachunk()
 
 datachunk& datachunk::UpdateBuffer(int length)	// Set nSamples. Re-allocate buf if necessary to accommodate new length.
 {
+	int currentBufsize = (int)(nSamples*1.1)+1;
 	if (length < 0 || length == nSamples)
 		return *this;
-	if ((size_t)length > BufSize || (size_t)length < BufSize/10) {
-		BufSize = (size_t)(length*1.1)+1;	// allocate extra space for growth.
-		double *newbuf = new double[BufSize];
+	if (length > currentBufsize) {
+		double *newbuf = new double[(int)(length*1.1)+1]; // allocate extra space for safety margin
 		if (nSamples>0)
 			memcpy(newbuf, buf, sizeof(*buf)*min(nSamples,length));
 		delete[] buf;
@@ -169,9 +168,9 @@ datachunk& datachunk::UpdateBuffer(int length)	// Set nSamples. Re-allocate buf 
 void datachunk::SwapContents1node(datachunk &sec)
 {	// swaps  fs, buf(shallow), chain(shallow), tmark, tfraction, BufSize, nSamples  (cell added but not sure if that's OK. bjkwon 4/3/2016)
 	datachunk tmp;
-	tmp.buf = buf, tmp.BufSize = BufSize, tmp.nSamples = nSamples;
-	buf = sec.buf, BufSize = sec.BufSize, nSamples = sec.nSamples;
-	sec.buf = tmp.buf, sec.BufSize = tmp.BufSize, sec.nSamples = tmp.nSamples;
+	tmp.buf = buf, tmp.nSamples = nSamples;
+	buf = sec.buf, nSamples = sec.nSamples;
+	sec.buf = tmp.buf, sec.nSamples = tmp.nSamples;
 	// clean up, so that destructor don't destroy chain and buf which are being used by sec
 	tmp.buf = NULL, tmp.nSamples = 0;
 }
@@ -334,9 +333,9 @@ void CSignal::SwapContents1node(CSignal &sec)
 {	// swaps  fs, buf(shallow), chain(shallow), tmark, tfraction, BufSize, nSamples  (cell added but not sure if that's OK. bjkwon 4/3/2016)
 	// *** Leaves "next" intact!!!
 	CSignal tmp(fs);
-	tmp.buf = buf, tmp.chain = chain, tmp.tmark = tmark, /*tmp.tfraction = tfraction,*/ tmp.BufSize = BufSize, tmp.nSamples = nSamples;// tmp = *this
-	fs = sec.fs, buf = sec.buf, chain = sec.chain, tmark = sec.tmark, /*tfraction = sec.tfraction,*/ BufSize = sec.BufSize, nSamples = sec.nSamples;	// *this = sec
-	sec.fs = tmp.fs, sec.buf = tmp.buf, sec.chain = tmp.chain, sec.tmark = tmp.tmark, /*sec.tfraction = tmp.tfraction,*/ sec.BufSize = tmp.BufSize, sec.nSamples = tmp.nSamples; // sec = tmp
+	tmp.buf = buf, tmp.chain = chain, tmp.tmark = tmark, /*tmp.tfraction = tfraction,*/ tmp.nSamples = nSamples;// tmp = *this
+	fs = sec.fs, buf = sec.buf, chain = sec.chain, tmark = sec.tmark, /*tfraction = sec.tfraction,*/ nSamples = sec.nSamples;	// *this = sec
+	sec.fs = tmp.fs, sec.buf = tmp.buf, sec.chain = tmp.chain, sec.tmark = tmp.tmark, /*sec.tfraction = tmp.tfraction,*/ sec.nSamples = tmp.nSamples; // sec = tmp
 	// clean up, so that destructor don't destroy chain and buf which are being used by sec
 	tmp.buf = NULL, tmp.chain = NULL, tmp.tmark = 0, /*tmp.tfraction = 0,*/ /*tmp.BufSize = 0,*/ tmp.nSamples = 0;
 }
@@ -993,6 +992,10 @@ CSignal& CSignal::timeshift(double timems)
 			// the decrease of points will step-up if timems exceeds the grid, so it is ceil.
 			int pointsless = (int)ceil((timems-p->tmark)*fs/1000.);
 			p->nSamples -= pointsless;
+			double *tbuf = new double[p->nSamples];
+			memcpy(tbuf, p->buf+pointsless, p->nSamples*sizeof(double));
+			delete[] p->buf;
+			p->buf = tbuf;
 			p->tmark = ( (double)pointsless - (timems-p->tmark)*fs/1000. ) * 1000./fs;
 		}
 	}
@@ -1016,7 +1019,6 @@ CSignal& CSignal::Trim(double begin_ms, double end_ms)
 {
 	if (begin_ms == end_ms) {Reset(); return *this;}
 	vector<double> tmarks;
-	CSignal old(*this), old2(*this), dummy;
 	if (begin_ms > end_ms) {
 		Trim(end_ms, begin_ms);
 		ReverseTime();
@@ -1733,7 +1735,7 @@ int CSignal::filtfilt(const CSignal& num, const CSignal& den, char *errstr)
 
 void CSignal::Filter(int nTabs, double *num, double *den)
 {
-	double *out = new double[BufSize];
+	double *out = new double[(int)(nSamples*1.1)+1];
 	if (den[0]!=0.)
 		filter(nTabs, num, den, nSamples, buf, out);
 	else
