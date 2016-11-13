@@ -41,6 +41,7 @@ typedef struct
 	int		length;
 	int		nChan;
 	int		nProgReport;
+	int		DevID;
 } NP;
 
 class CWavePlay
@@ -211,6 +212,8 @@ int CWavePlay::playnextchunk(char *errstr)
 	int nSamplesInBlock; // this is per each channel
 	NP thisnp = nextPlay.at(nextPlay.size()-1);
 
+	bool openclose (thisnp.nChan!=wfx.nChannels);
+
 	playBuffer = thisnp.playBuffer;
 	// then 
 	wfx.nChannels		= thisnp.nChan;
@@ -219,6 +222,10 @@ int CWavePlay::playnextchunk(char *errstr)
 	totalSamples = thisnp.length * wfx.nChannels;
 	nSamplesInBlock = thisnp.length / max(thisnp.nProgReport,1);
 	playBufferLen = nSamplesInBlock * wfx.nChannels;
+
+	if (openclose) 
+		if ((rc = waveOutClose(hwo))!=MMSYSERR_NOERROR)
+			rc = waveOutOpen (&hwo, thisnp.DevID, &wfx, (DWORD_PTR)threadID, (DWORD_PTR)545, CALLBACK_THREAD);
 
 	//initiate playing 
 	fillDataBuffer (wh, 0, playBufferLen);
@@ -403,6 +410,7 @@ void continuePlay(UINT DevID, SHORT *dataBuffer, int length, int nChan, UINT use
 	thisnp.nChan = nChan;
 	thisnp.nProgReport = nProgReport;
 	thisnp.playBuffer = dataBuffer;
+	thisnp.DevID = DevID;
 	if(PostThreadMessage(id, WM__SETNEXTPLAY, (WPARAM)&thisnp, 0)==0)
 	{
 		if (GetLastError()==1444)
