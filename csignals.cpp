@@ -149,7 +149,7 @@ datachunk::~datachunk()
 
 datachunk& datachunk::UpdateBuffer(int length)	// Set nSamples. Re-allocate buf if necessary to accommodate new length.
 {
-	int currentBufsize = (int)(nSamples*1.1)+1;
+	int currentBufsize = (int)(nSamples*1.1); // Ok to set currentBufsize conservatively (less room)
 	if (length < 0 || length == nSamples)
 		return *this;
 	if (length > currentBufsize) {
@@ -1893,9 +1893,17 @@ CSignal &CSignal::each(double (*fn)(double))
 		datachunk::each(fn); 
 	else if (GetType()==CSIG_AUDIO)
 	{
+		//for (CSignal *p=this; p; p=p->chain)
+		//	for (int i=0; i<p->nSamples; ++i)
+		//		p->buf[i] = (p->buf[i]>0 ?1:-1)*fn(p->buf[i]>0 ? p->buf[i]: -p->buf[i]);
 		for (CSignal *p=this; p; p=p->chain)
-			for (int i=0; i<p->nSamples; ++i)
-				p->buf[i] = (p->buf[i]>0 ?1:-1)*fn(p->buf[i]>0 ? p->buf[i]: -p->buf[i]);
+			for (int k(0); k<p->nSamples; k++)
+			{
+				if (p->buf[k]<0) 
+					p->buf[k] = -fn(-p->buf[k]);
+				else
+					p->buf[k] = fn(p->buf[k]);
+			}
 	}
 	else
 		throw "each()--only for vector/scalar or audio"; 
@@ -1912,8 +1920,15 @@ CSignal &CSignal::each(double (*fn)(double, double), datachunk &arg2)
 		{
 			double val = arg2.value();
 			for (CSignal *p=this; p; p=p->chain)
-			for (int i=0; i<p->nSamples; ++i)
-				p->buf[i] = (p->buf[i]>0 ?1:-1)*fn(p->buf[i]>0 ? p->buf[i]: -p->buf[i], val);
+//				for (int i=0; i<p->nSamples; ++i)
+//					p->buf[i] = (p->buf[i]>0 ?1:-1)*fn(p->buf[i]>0 ? p->buf[i]: -p->buf[i], val);
+				for (int k(0); k<p->nSamples; k++)
+				{
+					if (p->buf[k]<0) 
+						p->buf[k] = -fn(val, -p->buf[k]);
+					else
+						p->buf[k] = fn(val, p->buf[k]);
+				}
 		}
 		else
 		{
