@@ -1,3 +1,5 @@
+#ifndef NO_PLAYSND
+
 #include <windows.h>
 #include <stdio.h>
 #include <math.h>
@@ -8,6 +10,7 @@
 #define WM__RETURN			WM_APP+10
 
 HWND hMainAppl(NULL);
+//HANDLE mt;
 
 //to create a log file for soundplay define this
 //#define LOGGING  
@@ -31,7 +34,7 @@ int len_threadIDs(0); // to track thread handle in the present thread (e.g., to 
 #define MMCHECK(x) { rc = (x); if (rc!=MMSYSERR_NOERROR) {sprintf (errstr,"Error at "#x); return rc;}}
 
 #define MMCHECK_THREAD(x) { rc = (x); if (rc!=MMSYSERR_NOERROR) \
-{char errstr[256]; sprintf (errstr,"Error at "#x); MessageBox(NULL, errstr, "thread4MM",0); return rc;}}
+{char errstr[256], estr[256]; sprintf (errstr,"Error with code %d at "#x,rc); GetLastErrorStr(rc, estr); MessageBox(NULL, errstr, estr,0); return rc;}}
 
 #define LOG(X) fprintf(fp,(X));
 
@@ -266,6 +269,9 @@ static vector<PARAM4sndplay> pbparam;
 
 unsigned int WINAPI Thread4MM (PVOID p)
 {
+
+//	WaitForSingleObject(mt, INFINITE);
+
 	MSG        msg ;
 	bool ch(false);
 	bool hist(false);
@@ -293,7 +299,16 @@ unsigned int WINAPI Thread4MM (PVOID p)
 	pWP->wfx.wBitsPerSample	= 16;
 	pWP->wfx.cbSize			= 16;
 
-	MMCHECK_THREAD(waveOutOpen (&pWP->hwo, param.DevID, &pWP->wfx, (DWORD_PTR)pWP->threadID, (DWORD_PTR)545, CALLBACK_THREAD))
+	rc = waveOutOpen (&pWP->hwo, param.DevID, &pWP->wfx, (DWORD_PTR)pWP->threadID, (DWORD_PTR)545, CALLBACK_THREAD);
+	if (rc!=MMSYSERR_NOERROR)
+	{
+		char errstr[256], estr[256], buf[2048]; 
+		GetLastErrorStr(rc, estr); 
+		sprintf(errstr, "hwo=%x, DevID=%d, wfx=%x, threadID=%d", pWP->hwo, param.DevID, &pWP->wfx, (DWORD_PTR)pWP->threadID);
+		sprintf (buf,"waveOutOpen error code %d\n%s\n%s", rc, estr, errstr);
+		MessageBox(NULL, errstr, estr,0);
+		return rc;
+	}
 
 	pWP->totalSamples = param.length * param.nChan;
 	nSamplesInBlock = param.length / max(param.nProgReport,1);
@@ -385,6 +400,7 @@ unsigned int WINAPI Thread4MM (PVOID p)
 		}
 	}
 	delete pWP;
+//	ReleaseMutex(mt);
 	return (unsigned int)msg.wParam;
 }
 
@@ -439,6 +455,8 @@ int wavBuffer2snd(UINT DevID, SHORT *dataBuffer, int length, int nChan, int fs, 
 	param.callingthreadID = GetCurrentThreadId ();
 
 	pbparam.push_back(param);
+
+//	if (mt==NULL)  mt = CreateMutex(0,0,0);
 
 	if (loop)
 	{
@@ -538,3 +556,4 @@ EXP_CS HWND GetHWND_SIGPROC()
 {
 	return hMainAppl;
 }
+#endif // NO_PLAYSND

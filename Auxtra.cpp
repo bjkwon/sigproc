@@ -28,15 +28,14 @@ CSignals fourth, third, first, second;
 DWORD colordw;
 double blocksize;
 
-void aux_plotThread (PVOID var);
-
 void blockCell(const AstNode *pnode, CSignals &checkthis);
 void blockScalar(const AstNode *pnode, CSignals &checkthis);
 void blockString(const AstNode *pnode, CSignals &checkthis);
+void blockComplex(const AstNode *pnode, CSignals &checkthis);
 void checkString(const AstNode *pnode, CSignals &checkthis, string addmsg);
 
 typedef  void (_cdecl  *PFUN_DEL) (HANDLE h);
-typedef  HANDLE  (_cdecl *PFUN_OPEN) (RECT*, const CSignals &, HWND, int, double);
+typedef  HANDLE  (_cdecl *PFUN_OPEN) (RECT*, HWND, int, double);
 typedef  HANDLE  (_cdecl *PFUN_ADDAX) (HANDLE, double, double, double, double);
 typedef  HANDLE  (_cdecl *PFUN_PLOTCSIGNALS1) (HANDLE, CSignals &, COLORREF col, char, LineStyle);
 typedef  HANDLE  (_cdecl *PFUN_PLOTCSIGNALS11) (HANDLE, CSignal &, COLORREF col, char, LineStyle);
@@ -621,7 +620,7 @@ int LoadGRAFFY()
 #ifndef WIN64
 	hLib = LoadLibrary(strcat(path, "graffy32.dll")); // fix this.... if the path has been changed in the middle, we are no longer in AppPath
 	LOADPF(fp_AddAxis, PFUN_ADDAX, "?AddAxis@@YAPAXPAXNNNN@Z");
-	LOADPF(fp_OpenFigure, PFUN_OPEN, "?OpenFigure@@YAPAXPAVCRect@Win32xx@@ABVCSignals@@PAUHWND__@@HN@Z");
+	LOADPF(fp_OpenFigure, PFUN_OPEN, "?OpenFigure@@YAPAXPAVCRect@Win32xx@@PAUHWND__@@HN@Z");
 	LOADPF(fp_PlotCSignals1, PFUN_PLOTCSIGNALS1, "?PlotCSignals@@YAPAXPAXAAVCSignals@@KDW4LineStyle@@@Z");
 	LOADPF(fp_PlotCSignals2, PFUN_PLOTCSIGNALS2, "?PlotCSignals@@YAPAXPAXAAVCSignals@@1KDW4LineStyle@@@Z");
 	LOADPF(fp_deleteObj, PFUN_DEL, "?deleteObj@@YAXPAX@Z");
@@ -849,9 +848,11 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	int nArgs(0);
 	for (const AstNode *cp=p; cp; cp=cp->next)		++nArgs;
 	if (nArgs==1) {
-		blockCell(pnode,  ast.Compute(p));
-		blockString(pnode,  ast.Compute(p));
-		blockScalar(pnode,  ast.Compute(p));
+		CSignals tp = ast.Compute(p);
+		blockCell(pnode,  tp);
+		blockString(pnode,  tp);
+		blockScalar(pnode,  tp);
+		blockComplex(pnode,  tp);
 	}
 
 	static	CSignals dumma;
@@ -897,60 +898,29 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	}
 	if (nArgs<3 && args[nArgs-1].GetType()!=CSIG_STRING) args.push_back(dumma), args.back().SetString("-b");
 	getLineSpecifier (pnode, args.back().string(), linestyle, marker, col); // check if the line format string is valid
-	CSignals threadID((double)GetCurrentThreadId());
-	args.push_back(threadID);
-	HANDLE hTread = CreateThread (NULL, 0, (LPTHREAD_START_ROUTINE) aux_plotThread, (LPVOID)&args, 0, NULL);
-	MSG         msg ;
-	while (GetMessage (&msg, NULL, 0, 0))
-	{
-		CSignals gcf;
-		switch (msg.message)
-		{
-		case WM_PLOT_DONE:
-			ast.Sig.SetValue((double)(int)plotline);
-			GetFigID((HANDLE)msg.wParam, gcf);
-			ast.SetTag("gcf", gcf);
-			return;
-		case WM__CLICKED_GCF:
-			gcf.SetValue((double)(int)msg.wParam);
-			ast.SetTag("gcf", gcf);
-			return;
-		}
-	}
+//	CSignals threadID((double)GetCurrentThreadId());
+//	args.push_back(threadID);
 
-}
+	static GRAFWNDDLGSTRUCT in;
+	in.lineSpecifer = args.back().string();
+	CSignals gcf;
+	CRect rt(0, 0, 500, 310);
+	HANDLE fig = OpenGraffy(rt, "", GetCurrentThreadId(), GetHWND_SIGPROC(), in);
+	HANDLE ax = AddAxis (fig, .08, .18, .86, .72);
+	CAxis *cax = static_cast<CAxis *>(ax);
 
-void aux_plotThread (PVOID var)
-{
-	DWORD dw;
-	HANDLE fig;
-
-	dw = WaitForSingleObject(mutex, INFINITE);
-	vector<CSignals> *args;
-
-	args = (vector<CSignals> *)var;
-	int marker;
-	LineStyle linestyle;
-	DWORD col;
-	int nargs = (int)args[0].size();
-	DWORD callingthread = (DWORD)args[0][--nargs].value();
+	int nargs = (int)args.size();
 	switch(nargs)
 	{
 	case 3:
-		third = args[0][2];
+		third = args[2];
 	case 2: 
-		second = args[0][1];
+		second = args[1];
 	case 1:
-		first = args[0][0];
+		first = args[0];
 		break;
 	}
-	CSignals plotstyle = args[0][--nargs];
-	MSG         msg ;
-	HANDLE ax;
-	CRect rt(0, 0, 500, 280);
-	fig = fp_OpenFigure(&rt, first, GetHWND_SIGPROC(), 0, blocksize); // blocksize is ignored here 7/15/2016 bjk
-	ax = fp_AddAxis (fig, .08, .2, .86, .75);
-	getLineSpecifier (NULL, plotstyle.string(), linestyle, marker, col); // we know that this will always succeed, so pnode can be NULL
+	--nargs;
 	switch(nargs)
 	{
 	case 1:
@@ -964,38 +934,11 @@ void aux_plotThread (PVOID var)
 		plotline = fp_PlotCSignals2(ax, first, second, col, marker, linestyle); 
 		break;
 	}
-	HWND hr = GetConsoleWindow();
-	HWND h = SetFocus(fp_GetHWND_PlotDlg(fig));
-	ReleaseMutex(mutex);
-	HACCEL hAcc = GetAccel(fig);
+	HWND h  = GetHWND_SIGPROC();
+	PostMessage(h, WM__PLOTDLG_CREATED, (WPARAM)"", (LPARAM)&in);
 	CFigure *cfig = static_cast<CFigure *>(fig);
-	HWND hFigDlg = fp_GetHWND_PlotDlg((HANDLE)cfig);
-	PostThreadMessage(callingthread, WM_PLOT_DONE, (WPARAM)fig, 0);
-	while (GetMessage (&msg, NULL, 0, 0))
-	{ 
-		if (msg.message==WM_DESTROY || !cfig->m_dlg)	break;
-		if (msg.hwnd && !IsWindow(msg.hwnd)) 	break;
-		if (((msg.message>=WM_NCLBUTTONDOWN && msg.message<=WM_NCMBUTTONDBLCLK) || ((msg.message>=WM_LBUTTONDOWN && msg.message<=WM_MBUTTONDBLCLK)) ))
-		{
-			char buf[32];
-			int id;
-			GetWindowText(hFigDlg, buf, sizeof(buf));
-			int res = sscanf(buf,"Figure%d", &id);
-			CSignals tp((double)id);
-			mainast->SetTag("gcf", tp);
-		}
 
-		if (msg.message==WM_KEYDOWN && msg.wParam==17 && GetParent(msg.hwnd)==hFigDlg)
-			msg.hwnd = hFigDlg;
-		if (!TranslateAccelerator (cfig->m_dlg->hDlg, hAcc, &msg))
-		{
-			TranslateMessage (&msg) ;
-			DispatchMessage (&msg) ;
-		}
-	}
-	if (mutex!=NULL) {CloseHandle(mutex); mutex=NULL;}
-	fp_deleteObj(ax);
-	fp_deleteObj(fig);
+	ast.Sig.SetValue((double)(int)plotline);
 }
 
 #endif

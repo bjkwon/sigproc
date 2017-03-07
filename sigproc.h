@@ -24,6 +24,7 @@
 #define CSIG_AUDIO		5
 #define CSIG_VECTOR		6
 #define CSIG_CELL		7
+#define CSIG_COMPLEX	8
 
 #ifdef _WINDOWS
 #include <windows.h>
@@ -34,6 +35,7 @@
 #include <map>
 #include <vector>
 #include <set>
+#include <complex>
 
 #ifndef PSYCONYACC
 #include "psycon.yacc.h"
@@ -49,10 +51,13 @@ public:
 	{
 		double *buf;
 		char *strbuf;
+		complex<double> *cbuf;
 	};
+	unsigned char bufBlockSize;
 	datachunk();
 	datachunk(const datachunk& src);
 	datachunk(double value);
+	datachunk(complex<double> value);
 	datachunk(double *y, int len);
 
 	datachunk& operator=(const datachunk& rhs);
@@ -60,11 +65,19 @@ public:
 	datachunk& UpdateBuffer(int length);
 	void Reset() {nSamples = 0;}
 	double value(void) const {if (nSamples==1) return buf[0]; else if (nSamples==0) throw "value( ) on null."; else throw "value( ) on vector.";}
-	void SetValue(double v) {Reset(); nSamples=1; buf[0]=v; }
+	void SetValue(double v) {delete[] buf; buf = new double[1]; nSamples=1; buf[0]=v; }
+	void SetValue(complex<double> v) {delete[] buf; buf = new double[2]; bufBlockSize=2; nSamples=1; cbuf[0]=v; }
+	void SetComplex();
+	void SetReal();
+	bool IsComplex() const  { return (bufBlockSize==2); } 
 	void SwapContents1node(datachunk &sec);
 
 	datachunk &each(double (*fn)(double));
+	datachunk &each(double (*fn)(complex<double>));
+	datachunk &each(complex<double> (*fn)(complex<double>));
 	datachunk &each(double (*fn)(double, double), datachunk &arg2); 
+	datachunk &each(complex<double> (*fn)(complex<double>, complex<double>), datachunk &arg2);
+
 	datachunk &transpose1();
 
 	double Sum();
@@ -120,6 +133,7 @@ public:
 	virtual double * Hilbert(int len);
 	virtual double * HilbertEnv(int len);
 	virtual double * ShiftFreq(double shift);
+	virtual double * TCTS(double freq, double ratio);
 #endif
 	virtual void DownSample(int q);
 	virtual void UpSample(int p);
@@ -173,7 +187,7 @@ public:
 	int WriteAXL(FILE* fp);
 
 	// Retrieve signal characteristics (single channel ONLY)
-	virtual int GetType() const; 
+	int GetType() const; 
 	vector<double> Sum();
 	vector<double> Mean();
 	vector<int> MinId();
@@ -189,8 +203,9 @@ public:
 	double endt() {return tmark + dur();}// end time point in miliseconds
 	bool IsScalar() const {return (GetType() == CSIG_SCALAR);}
 	bool IsEmpty() const {return (GetType() == CSIG_EMPTY);}
-	bool IsSingle() const {return ( (GetType() == CSIG_SCALAR || GetType() == CSIG_STRING) && nSamples==1);}
+	bool IsSingle() const {return ( (GetType() == CSIG_SCALAR || GetType() == CSIG_COMPLEX || GetType() == CSIG_STRING) && nSamples==1);}
 	bool IsString() const {return (fs == 2);}
+	bool IsComplex() const  { return (bufBlockSize==2); } 
 	int IsNull(double timept);
 	CSignal& Insert(double timept, CSignal &newchunk);
 	CSignal& Replace(CSignal &newsig, double t1, double t2);
@@ -225,8 +240,11 @@ public:
 	CSignal &SetString(const char *str);
 	CSignal &SetString(const char c);
 
-	CSignal &each(double (*fn)(double, double), datachunk &arg2);
 	CSignal &each(double (*fn)(double));
+	CSignal &each(double (*fn)(complex<double>));
+	CSignal &each(double (*fn)(double, double), datachunk &arg2);
+	CSignal &each(complex<double> (*fn)(complex<double>));
+	CSignal &each(complex<double> (*fn)(complex<double>, complex<double>), datachunk &arg2);
 	CSignal &transpose1();
 
 protected:
@@ -319,20 +337,27 @@ public:
 	EXP_CS double * Hilbert(int len);
 	EXP_CS double * HilbertEnv(int len);
 	EXP_CS double * ShiftFreq(double shift);
+	EXP_CS double * TCTS(double freq, double ratio);
 #endif
 	EXP_CS CSignals &each(double (*fn)(double));
+	EXP_CS CSignals &each(double (*fn)(complex<double>));
 	EXP_CS CSignals &each(double (*fn)(double, double), datachunk &arg2);
+	EXP_CS CSignals &each(complex<double> (*fn)(complex<double>));
+	EXP_CS CSignals &each(complex<double> (*fn)(complex<double>, complex<double>), datachunk &arg2);
 	CSignals &transpose1() {CSignal::transpose1(); if (next) next->transpose1(); return *this;}
 
 
 #ifdef _WINDOWS
-	//Miscellaneous functions
+#ifndef NO_PLAYSND
+	// Sound Playback functions
 	EXP_CS void PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr, int loop=0); // playing with event notification by specified time block
 	EXP_CS void PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr, int loop=0); // full format
 	EXP_CS void PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr);
 	EXP_CS void PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr); // full format
 	EXP_CS void PlayArray(int DevID, char *errstr); // (blocking play)
 	EXP_CS void PlayArray(char *errstr); //assuming the first device
+#endif // NO_PLAYSND
+
 #ifndef NO_SF
 	EXP_CS CSignals(const char* wavname);
 	EXP_CS int Wavwrite(const char *wavname, char *errstr, std::string wavformat="");

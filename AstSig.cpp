@@ -202,6 +202,7 @@ bool CAstSig::isInterrupted(void)
 CSignals &CAstSig::Compute(void)
 {
 	Sig.cell.clear();
+	Sig.bufBlockSize=1;
 	try {
 		if (!pAst)
 			return Sig;
@@ -262,6 +263,7 @@ CSignals &CAstSig::Eval(AstNode *pnode)
 
 CSignals &CAstSig::Compute(const AstNode *pnode)
 {
+	Sig.bufBlockSize=1;
 	int count(0);
 	int mn, mx;
 	CSignals tsig, isig, *psig;
@@ -710,8 +712,18 @@ try {
 				throw CAstException(p, "Index exceeds size of vector.");
 			Sig.Reset(1); // extraction by indices will generate a non-audio array
 			Sig.UpdateBuffer(isig.nSamples);
-			for (int i=0; i<isig.nSamples; i++)
-				Sig.buf[i] = psig->buf[round(isig.buf[i])-1];	// -1 for one-based indexing
+			if (psig->bufBlockSize==2) 
+			{
+				Sig.SetComplex();
+				for (int i=0; i<isig.nSamples; i++)
+					Sig.cbuf[i] = psig->cbuf[round(isig.buf[i])-1];	// -1 for one-based indexing
+			}
+			else
+			{
+				Sig.SetReal();
+				for (int i=0; i<isig.nSamples; i++)
+					Sig.buf[i] = psig->buf[round(isig.buf[i])-1];	// -1 for one-based indexing
+			}
 			break;
 		} else if (AstNode *pUDF=RetrieveUDF(pnode->str)) {
 			CallSub(pUDF, pnode);

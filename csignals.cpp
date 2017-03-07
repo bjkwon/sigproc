@@ -106,25 +106,30 @@ void SwapCSignalsPutScalarSecond(CSignals &sig1, CSignals &sig2)
 }
 
 datachunk::datachunk()
-:nSamples(0), buf(new double[1])
+:nSamples(0), bufBlockSize(1), buf(new double[0])
 {
 }
 
 datachunk::datachunk(double value)
-:nSamples(1), buf(new double[1])
+:nSamples(1), bufBlockSize(1), buf(new double[0])
 {
 	SetValue(value);
 }
 
+datachunk::datachunk(complex<double> value)
+:nSamples(1), bufBlockSize(2), buf(new double[2])
+{
+	cbuf[0]=value; 
+}
+
 datachunk::datachunk(const datachunk& src) 
-:nSamples(0), buf(new double[1])
+:nSamples(0), bufBlockSize(1), buf(new double[0])
 {
 	*this = src;
 }
 
-
 datachunk::datachunk(double *y, int len)
-:nSamples(len), buf(new double[(int)(len*1.1)+1])
+:nSamples(len), bufBlockSize(1), buf(new double[len])
 {
 	memcpy((void*)buf, (void*)y, sizeof(double)*len);
 }
@@ -134,10 +139,12 @@ datachunk& datachunk::operator=(const datachunk& rhs)
 {
 	if (this != &rhs) 
 	{
-		if (nSamples< rhs.nSamples) {delete[] buf; buf = new double[rhs.nSamples];}
+		size_t currentBufSize = bufBlockSize * nSamples; 
+		size_t reqBufSize = rhs.bufBlockSize * rhs.nSamples;
+		if (currentBufSize < reqBufSize) {delete[] buf; buf = new double[reqBufSize];}
 		nSamples = rhs.nSamples;
-//		val = rhs.val;
-		memcpy(buf, rhs.buf, sizeof(double)*nSamples);
+		bufBlockSize = rhs.bufBlockSize;
+		memcpy(buf, rhs.buf, sizeof(double)*nSamples*bufBlockSize);
 	}
 	return *this;
 }
@@ -149,28 +156,55 @@ datachunk::~datachunk()
 
 datachunk& datachunk::UpdateBuffer(int length)	// Set nSamples. Re-allocate buf if necessary to accommodate new length.
 {
-	int currentBufsize = (int)(nSamples*1.1); // Ok to set currentBufsize conservatively (less room)
-	if (length < 0 || length == nSamples)
+	size_t currentBufsize = bufBlockSize * nSamples; 
+	size_t reqBufSize = bufBlockSize * length; 
+	if (length < 0 || currentBufsize == reqBufSize)
 		return *this;
-	if (length > currentBufsize) {
-		double *newbuf = new double[(int)(length*1.1)+1]; // allocate extra space for safety margin
+	if (reqBufSize > currentBufsize) {
+		double *newbuf = new double[reqBufSize];
 		if (nSamples>0)
-			memcpy(newbuf, buf, sizeof(*buf)*min(nSamples,length));
+			memcpy(newbuf, buf, sizeof(*buf)*nSamples*bufBlockSize);
 		delete[] buf;
 		buf = newbuf;
 	}
 	if (length > nSamples)
-		memset(buf+nSamples, 0, sizeof(*buf)*(length-nSamples)); //initializing with zeros for the rest
+		memset(buf+nSamples*bufBlockSize, 0, sizeof(*buf)*(length-nSamples)*bufBlockSize); //initializing with zeros for the rest
 	nSamples = length;
 	return *this;
 }
 
+void datachunk::SetReal() 
+{ // This converts a complex array into real (decimating the imaginary part).
+  // Must not be used when the buf is properly prepared--in that case just bufBlockSize = 1; is sufficient.
+	if (IsComplex())
+	{
+		bufBlockSize = 1; 
+		for (int k=0; k<nSamples; k++) buf[k] = buf[2*k];
+	}
+}
+
+void datachunk::SetComplex() 
+{
+	if (bufBlockSize!=2) 
+	{
+		bufBlockSize = 2;  
+		if (nSamples>0)
+		{
+			double *newbuf = new double[2*nSamples]; 
+			memset(newbuf, 0, sizeof(double)*2*nSamples);
+			for (int k=0; k<nSamples; k++) newbuf[2*k] = buf[k];
+			delete[] buf; 
+			buf = newbuf;
+		}
+	} 
+}
+
 void datachunk::SwapContents1node(datachunk &sec)
-{	// swaps  fs, buf(shallow), chain(shallow), tmark, tfraction, BufSize, nSamples  (cell added but not sure if that's OK. bjkwon 4/3/2016)
+{	// swaps  fs, buf(shallow), chain(shallow), tmark, nSamples  (cell added but not sure if that's OK. bjkwon 4/3/2016)
 	datachunk tmp;
-	tmp.buf = buf, tmp.nSamples = nSamples;
-	buf = sec.buf, nSamples = sec.nSamples;
-	sec.buf = tmp.buf, sec.nSamples = tmp.nSamples;
+	tmp.buf = buf, tmp.nSamples = nSamples, tmp.bufBlockSize = bufBlockSize;
+	buf = sec.buf, nSamples = sec.nSamples, bufBlockSize = sec.bufBlockSize;
+	sec.buf = tmp.buf, sec.nSamples = tmp.nSamples, sec.bufBlockSize = tmp.bufBlockSize;
 	// clean up, so that destructor don't destroy chain and buf which are being used by sec
 	tmp.buf = NULL, tmp.nSamples = 0;
 }
@@ -183,6 +217,23 @@ datachunk &datachunk::each(double (*fn)(double))
 	return *this;
 }
 
+datachunk &datachunk::each(double (*fn)(complex<double>))
+{
+	double *out = new double[nSamples];
+	for (int i=0; i<nSamples; ++i)
+		out[i] = fn(cbuf[i]);
+	delete[] buf;
+	buf = out;
+	bufBlockSize=1;
+	return *this;
+}
+
+datachunk &datachunk::each(complex<double> (*fn)(complex<double>))
+{
+	for (int i=0; i<nSamples; ++i)
+		cbuf[i] = fn(cbuf[i]);
+	return *this;
+}
 
 datachunk &datachunk::each(double (*fn)(double, double), datachunk &arg2)
 {
@@ -196,6 +247,22 @@ datachunk &datachunk::each(double (*fn)(double, double), datachunk &arg2)
 	else
 	{
 		for (int i=0; i<min(nSamples, arg2.nSamples); ++i) buf[i] = fn(buf[i], arg2.buf[i]); 
+	}
+	return *this;
+}
+
+datachunk &datachunk::each(complex<double> (*fn)(complex<double>, complex<double>), datachunk &arg2)
+{
+	if (nSamples==1 && arg2.nSamples==1)
+		SwapContents1node(arg2);
+	if (arg2.nSamples==1) 
+	{
+		complex<double> val = arg2.cbuf[0];
+		for (int i=0; i<nSamples; ++i)	cbuf[i] = fn(cbuf[i],val); 
+	}
+	else
+	{
+		for (int i=0; i<min(nSamples, arg2.nSamples); ++i) cbuf[i] = fn(cbuf[i], arg2.cbuf[i]); 
 	}
 	return *this;
 }
@@ -318,8 +385,9 @@ CSignal& CSignal::operator=(const CSignal& rhs)
 		Reset(rhs.fs);
 		tmark = rhs.tmark;
 		if (rhs.nSamples>0) {
+			bufBlockSize = rhs.bufBlockSize;
 			UpdateBuffer(rhs.nSamples);
-			memcpy(buf, rhs.buf, nSamples * sizeof(*buf));
+			memcpy(buf, rhs.buf, bufBlockSize * nSamples * sizeof(*buf));
 		}
 		if (rhs.chain) {
 			chain = new CSignal;
@@ -333,9 +401,9 @@ void CSignal::SwapContents1node(CSignal &sec)
 {	// swaps  fs, buf(shallow), chain(shallow), tmark, tfraction, BufSize, nSamples  (cell added but not sure if that's OK. bjkwon 4/3/2016)
 	// *** Leaves "next" intact!!!
 	CSignal tmp(fs);
-	tmp.buf = buf, tmp.chain = chain, tmp.tmark = tmark, /*tmp.tfraction = tfraction,*/ tmp.nSamples = nSamples;// tmp = *this
-	fs = sec.fs, buf = sec.buf, chain = sec.chain, tmark = sec.tmark, /*tfraction = sec.tfraction,*/ nSamples = sec.nSamples;	// *this = sec
-	sec.fs = tmp.fs, sec.buf = tmp.buf, sec.chain = tmp.chain, sec.tmark = tmp.tmark, /*sec.tfraction = tmp.tfraction,*/ sec.nSamples = tmp.nSamples; // sec = tmp
+	tmp.buf = buf, tmp.chain = chain, tmp.tmark = tmark, tmp.nSamples = nSamples; tmp.bufBlockSize = bufBlockSize; // tmp = *this
+	fs = sec.fs, buf = sec.buf, chain = sec.chain, tmark = sec.tmark, nSamples = sec.nSamples;	bufBlockSize = sec.bufBlockSize; // *this = sec
+	sec.fs = tmp.fs, sec.buf = tmp.buf, sec.chain = tmp.chain, sec.tmark = tmp.tmark, sec.nSamples = tmp.nSamples; sec.bufBlockSize = tmp.bufBlockSize; // sec = tmp
 	// clean up, so that destructor don't destroy chain and buf which are being used by sec
 	tmp.buf = NULL, tmp.chain = NULL, tmp.tmark = 0, /*tmp.tfraction = 0,*/ /*tmp.BufSize = 0,*/ tmp.nSamples = 0;
 }
@@ -343,7 +411,7 @@ void CSignal::SwapContents1node(CSignal &sec)
 CSignal& CSignal::operator+=(const double con) 
 { 
 	for (int i=0; i<nSamples; i++) 
-		buf[i] += con; 
+		buf[i*bufBlockSize] += con; 
 	if (chain) 
 		*chain += con; 
 	return *this; 
@@ -352,7 +420,7 @@ CSignal& CSignal::operator+=(const double con)
 CSignal& CSignal::operator*=(const double con)
 { 
 	for (int i=0; i<nSamples; i++) 
-		buf[i] *= con; 
+		buf[i*bufBlockSize] *= con; 
 	if (chain) 
 		*chain *= con; 
 	return *this; 
@@ -364,13 +432,48 @@ CSignal& CSignal::operator+=(CSignal &sec)
 	if (sec.IsEmpty() || sec.GetType()==CSIG_NULL) return *this;
 	if (IsSingle() && !sec.IsSingle()) 
 		SwapContents1node(sec); 
-	if (sec.IsSingle()) { 
-		if (IsSingle()) 
-			SetValue(buf[0] + sec.value()); 
-		else 
-			*this += sec.value(); 
+	if (sec.IsSingle()) 
+	{ 
+		if (sec.IsComplex()) SetComplex();
+		if (IsComplex()) 
+		{
+			sec.SetComplex();
+			for (int k=0; k<nSamples; k++)
+				cbuf[k] += sec.cbuf[0];
+		}
+		else
+		{
+			for (int k=0; k<nSamples; k++)
+				buf[k] += sec.buf[0];
+		}
 	} else	/* now for two vectors */ 
 		AddMultChain( '+', &sec ); 
+	return *this; 
+} 
+
+
+CSignal& CSignal::operator*=(CSignal &sec) 
+{ 
+	if (IsEmpty() || GetType()==CSIG_NULL) return (*this=sec);
+	if (sec.IsEmpty() || sec.GetType()==CSIG_NULL) return *this;
+	if (IsSingle() && !sec.IsSingle()) 
+		SwapContents1node(sec); 
+	if (sec.IsSingle()) 
+	{ 
+		if (sec.IsComplex()) SetComplex();
+		if (IsComplex()) 
+		{
+			sec.SetComplex();
+			for (int k=0; k<nSamples; k++)
+				cbuf[k] *= sec.cbuf[0];
+		}
+		else
+		{
+			for (int k=0; k<nSamples; k++)
+				buf[k] *= sec.buf[0];
+		}
+	} else	/* now for two vectors */ 
+		AddMultChain( '*', &sec ); 
 	return *this; 
 } 
 
@@ -396,28 +499,37 @@ const CSignal& CSignal::operator+=(CSignal *yy)
 		ptail->chain = pNew;					// link it to *this.
 	} else {
 		// otherwise, just copy at the end.
-		int nSamples0 = ptail->nSamples;
-		ptail->UpdateBuffer(yy->nSamples + nSamples0);
 		if (yy->nSamples>0)
 		{
+			int nSamples0 = ptail->nSamples;
+			if (yy->IsComplex()) ptail->SetComplex();
+			ptail->UpdateBuffer(yy->nSamples + nSamples0);
 			if (GetType()==CSIG_STRING)
 				strcat(ptail->strbuf, yy->strbuf);
 			else
-				memcpy(ptail->buf+nSamples0, yy->buf, yy->nSamples*sizeof(*buf));
+			{
+				if (yy->IsComplex())
+					memcpy(&ptail->buf[nSamples0*bufBlockSize], yy->buf, bufBlockSize*yy->nSamples*sizeof(*buf));
+				else
+					for (int k=0; k<yy->nSamples; k++)
+						ptail->buf[(nSamples0+k)*bufBlockSize] = yy->buf[k];
+			}
 		}
 	}
 	return *this;
 }
 
-
-
 void CSignal::AddMultChain(char type, CSignal *sec) 
 { 
 	if (fs!=1 && sec->fs!=1 && fs != sec->fs)  throw "The sampling rates of both operands must be the same."; 
+
+
 	CSignal *pm=this;
 	CSignal *ps=sec;
 	CSignal *p;
 	CSignal out(sec->GetFs()), part(sec->GetFs());
+	if (IsComplex() || sec->IsComplex()) { SetComplex(); sec->SetComplex(); part.SetComplex();}
+
 	vector<double> thistmark;
 	vector<double> sectmark;
 	for (p=this; p; p=p->chain)
@@ -461,40 +573,46 @@ void CSignal::AddMultChain(char type, CSignal *sec)
 
 	if (status>0) // if status is 0, skip this cycle--no need to add chain
 	{
-		// status indicates in the time rangebetween the last two values of anc, what signal is present
+		// status indicates in the time range between the last two values of anc, what signal is present
 		// 1 means this, 2 means sec, 3 means both
 		count = round(( anc1-anc0 )/1000.*fs); 
-		part.UpdateBuffer(count);
-		part.tmark = anc0;
-		if (status&1) 
+		if (count>0)
 		{
-			for (k=0, p=pm; k<im/2; k++/*, p=p->chain*/)
+			part.UpdateBuffer(count);
+			part.tmark = anc0;
+			if (status&1) 
 			{
-				if (p->chain!=NULL) p=p->chain;
-				else				break;
+				for (k=0, p=pm; k<im/2; k++/*, p=p->chain*/)
+				{
+					if (p->chain!=NULL) p=p->chain;
+					else				break;
+				}
+				int id = round(( anc0-p->tmark )/1000.*fs);
+				memcpy(part.buf, p->buf+id*bufBlockSize, sizeof(double)*part.nSamples*bufBlockSize);
 			}
-			int id = round(( anc0-p->tmark )/1000.*fs);
-			memcpy(part.buf, p->buf+id, sizeof(double)*part.nSamples);
-
-		}
-		if (status&2) 
-		{
-			for (k=0, p=ps; k<is/2; k++)
-				if (p->chain!=NULL) p=p->chain;
-			int id = round(( anc0-p->tmark )/1000.*fs);
-			if (status&1) // type=='+' add the two,  type=='*' multiply
+			if (status&2) 
 			{
-				if (type=='+')	for (int k=0; k<count; k++)	part.buf[k] += p->buf[k+id];
-				else if (type=='*')	for (int k=0; k<count; k++)	part.buf[k] *= p->buf[k+id];
-			}
-			else 
-			{
-				memcpy(part.buf, p->buf+id, sizeof(double)*part.nSamples);
+				for (k=0, p=ps; k<is/2; k++)
+					if (p->chain!=NULL) p=p->chain;
+				int id = round(( anc0-p->tmark )/1000.*fs);
+				if (status&1) // type=='+' add the two,  type=='*' multiply
+				{
+					if (type=='+')	for (int k=0; k<count*bufBlockSize; k++)	part.buf[k] += p->buf[k+id];
+					else if (type=='*')	
+					{
+						if (part.IsComplex()) for (int k=0; k<count; k++)	part.cbuf[k] *= p->cbuf[k+id];
+						else				 for (int k=0; k<count; k++)	part.buf[k] *= p->buf[k+id];
+					}
+				}
+				else 
+				{
+					memcpy(part.buf, p->buf+id*bufBlockSize, sizeof(double)*part.nSamples*bufBlockSize);
+				}
 			}
 		}
 		if (out.tmark==0. && out.nSamples==0) // the very first time
 			out = part;
-		else if (part.nSamples>0)
+		else if (count>0 && part.nSamples>0) // if count==0, don't add part (which might be leftover from the previous round)
 			out.AddChain(part);
 	}
 	anc0 = anc1;
@@ -518,6 +636,8 @@ CSignal& CSignal::ConnectChains()
 	while(1)
 	{
 		CSignal part(fs);
+		if (IsComplex()) part.SetComplex();
+
 		part.tmark = p->tmark;
 		int count(0);
 		// Get the count needed to consolidate 
@@ -540,9 +660,9 @@ CSignal& CSignal::ConnectChains()
 		part.UpdateBuffer(count);
 		int offset(0);
 		while (1) {
-			memcpy(part.buf+offset, p->buf, sizeof(double)*p->nSamples);
-			offset += p->nSamples;
-			if (p->chain!=NULL && offset==(int)(p->chain->tmark/1000.*fs+.1))
+			memcpy(part.buf+offset, p->buf, sizeof(double)*p->nSamples*bufBlockSize);
+			offset += p->nSamples*bufBlockSize;
+			if (p->chain!=NULL && offset==(int)(p->chain->tmark/1000.*fs+.1)*bufBlockSize)
 				p=p->chain;
 			else
 				break;
@@ -557,27 +677,6 @@ CSignal& CSignal::ConnectChains()
 	return (*this=out);
 }
 
-CSignal& CSignal::operator*=(CSignal &sec) 
-{ 
-	if (IsEmpty()) return (*this=sec);
-	if (sec.IsEmpty()) return *this;
-	if (IsSingle() && !sec.IsSingle()) 
-		SwapContents1node(sec); 
-	if (sec.IsSingle()) { 
-		if (IsSingle()) 
-			SetValue(buf[0] * sec.value()); 
-		else 
-			*this *= sec.value(); 
-	} 
-	else
-	{
-		if (sec.GetType()==CSIG_NULL) return *this;
-		if (GetType()==CSIG_NULL) return sec;
-		/* now for two vectors */ 
-		AddMultChain( '*', &sec ); 
-	}
-	return *this; 
-} 
 
 CSignal& CSignal::operator-=(CSignal &sec)
 {
@@ -1206,7 +1305,6 @@ double * CSignal::Tone(double freq, double dur_ms, double beginPhase)
 	double *p = Tone(freq, nSamplesNeeded, beginPhase);
 	return p;
 }
-
 #ifndef NO_FFTW
 
 #include "fftw3.h"
@@ -1264,28 +1362,44 @@ double * CSignal::ShiftFreq(double shift)
 {
 	CSignals copy(*this);
 	Hilbert(nSamples);
-	vector<complex<double>> data;
-	data.resize(nSamples);
-	int k(0);
 	double t(0), grid(1./fs);
 	const complex<double> j(0.0,1.0); 
-	for (vector<complex<double>>::iterator it=data.begin(); it!=data.end(); it++)
+	complex<double> datum;
+	for (int k=0; k<nSamples; k++)
 	{
-		*it = copy.buf[k] + buf[k] * j;
-		*it *= exp(j * shift *  2. * PI * t);
-		buf[k++] = real(*it);
+		datum = copy.buf[k] + buf[k] * j;
+		datum *= exp(j * shift *  2. * PI * t);
+		buf[k] = real(datum);
 		t += grid;
 	}
 	return buf;
 }
 
+double * CSignal::TCTS(double freq, double ratio)
+{
+	CSignals copy(*this);
+	char errstr[256]="";
+
+
+
+
+	ShiftFreq(freq*(ratio-1.));
+	Resample((int)(fs*ratio), errstr);
+	SetFs(copy.GetFs());
+	return buf;
+}
+
+
+
 double * CSignal::HilbertEnv(int len)
 {
-	CSignals analytic(*this);
-	Hilbert(len);
-	analytic.SetNextChan(this);
-	analytic.Mag();
-	*this = analytic;
+	CSignal phaseshifted(*this), out(fs);
+	phaseshifted.Hilbert(len);
+	SetComplex();
+	for (int k=0; k<len; k++) buf[2*k+1] = phaseshifted.buf[k];
+	out.UpdateBuffer(len);
+	for (int k=0; k<len; k++) out.buf[k] = abs(cbuf[k]);
+	*this = out;
 	return buf;
 }
 
@@ -1504,6 +1618,8 @@ int CSignal::GetType() const
 	}
 	else if (fs==2) // string
 		return CSIG_STRING;
+	else if (IsComplex()) // 
+		return CSIG_COMPLEX;
 	else if (nSamples==1 && fs==1) // scalar 
 		return CSIG_SCALAR;
 	else if (fs>2) // audio
@@ -1893,9 +2009,6 @@ CSignal &CSignal::each(double (*fn)(double))
 		datachunk::each(fn); 
 	else if (GetType()==CSIG_AUDIO)
 	{
-		//for (CSignal *p=this; p; p=p->chain)
-		//	for (int i=0; i<p->nSamples; ++i)
-		//		p->buf[i] = (p->buf[i]>0 ?1:-1)*fn(p->buf[i]>0 ? p->buf[i]: -p->buf[i]);
 		for (CSignal *p=this; p; p=p->chain)
 			for (int k(0); k<p->nSamples; k++)
 			{
@@ -1907,6 +2020,24 @@ CSignal &CSignal::each(double (*fn)(double))
 	}
 	else
 		throw "each()--only for vector/scalar or audio"; 
+	return *this;
+}
+
+CSignal &CSignal::each(complex<double> (*fn)(complex<double>))
+{
+	if (GetType()==CSIG_COMPLEX)
+		datachunk::each(fn); 
+	else
+		throw "each()--expecting complex number"; 
+	return *this;
+}
+
+CSignal &CSignal::each(double (*fn)(complex<double>))
+{
+	if (GetType()==CSIG_COMPLEX)
+		datachunk::each(fn); 
+	else
+		throw "each()--expecting complex number"; 
 	return *this;
 }
 
@@ -1941,6 +2072,17 @@ CSignal &CSignal::each(double (*fn)(double, double), datachunk &arg2)
 		throw "each()--only for vector/scalar or audio"; 
 	return *this;
 }
+
+CSignal &CSignal::each(complex<double> (*fn)(complex<double>, complex<double>), datachunk &arg2)
+{
+	if (GetType()==CSIG_COMPLEX)
+		datachunk::each(fn, arg2);  
+	else
+		throw "each()--expecting complex number"; 
+	return *this;
+
+}
+
 
 CSignal &CSignal::transpose1()
 {
@@ -2019,12 +2161,12 @@ EXP_CS CSignals::CSignals(const CSignals& src)
 EXP_CS CSignals::CSignals(const CSignal& src)
 :next(NULL)
 {
-	UpdateBuffer((int)(src.nSamples*1.1));
+	UpdateBuffer(src.nSamples*src.bufBlockSize);
 	nSamples = src.nSamples;
+	bufBlockSize = src.bufBlockSize;
 	tmark = src.tmark;
-//	val = src.val;
 	fs = src.GetFs();
-	memcpy(buf, src.buf, sizeof(double)*nSamples);
+	memcpy(buf, src.buf, sizeof(double)*nSamples*bufBlockSize);
 	if (src.chain)
 	{
 		chain = new CSignal;
@@ -2235,21 +2377,20 @@ EXP_CS CSignals& CSignals::operator*=(CSignals &sec)
 }
 
 EXP_CS double * CSignals::Mag()
-{
-	//"imaginary" --- output of FFT
+{ // I don't remember any more when I used this last time. 11/28/2016
+	// output of FFT ... if used in other context, note...to generalize // 11/26/2016
 	CSignal out(*this);
-	if (!next) return buf; // if real, return as is.
-	if (nSamples != next->nSamples) throw "Mag(): main and add must be the same length.";
-	double *x1 = buf;
-	double *x2 = next->buf;
+	if (!IsComplex()) return buf; // if real, return as is.
 	out.UpdateBuffer(nSamples);
 	for (int k(0); k<nSamples; k++) 		
-		buf[k] = sqrt(x1[k]*x1[k]+x2[k]*x2[k]);
+		out.buf[k] = sqrt(buf[2*k]*buf[2*k]+buf[2*k+1]*buf[2*k+1]);
+	SetReal();
+	memcpy(buf, out.buf, sizeof(double)*nSamples);
 	return buf;
 }
 
 EXP_CS CSignal CSignals::Angle()
-{
+{// I don't remember any more when I used this last time. 11/28/2016
 	//"imaginary" --- output of FFT
 	CSignal out(*this);
 	double *x1 = buf;
@@ -2370,12 +2511,37 @@ EXP_CS CSignals &CSignals::each(double (*fn)(double))
 	return *this;
 }
 
+EXP_CS CSignals &CSignals::each(complex<double> (*fn)(complex<double>))
+{
+	CSignal::each(fn);
+	if (next) 	next->each(fn);
+	return *this;
+}
+
+EXP_CS CSignals &CSignals::each(double (*fn)(complex<double>))
+{
+	CSignal::each(fn);
+	if (next) 	next->each(fn);
+	return *this;
+}
+
+EXP_CS CSignals &each(complex<double> (*fn)(complex<double>));
+
+
 EXP_CS CSignals &CSignals::each(double (*fn)(double, double), datachunk &arg2)
 {
 	CSignal::each(fn, arg2);
 	if (next) 	next->each(fn, arg2);
 	return *this;
 }
+
+EXP_CS CSignals &CSignals::each(complex<double> (*fn)(complex<double>, complex<double>), datachunk &arg2)
+{
+	CSignal::each(fn, arg2);
+	if (next) 	next->each(fn, arg2);
+	return *this;
+}
+
 
 #ifndef NO_SF
 
@@ -2482,6 +2648,9 @@ EXP_CS int CSignals::Wavwrite(const char *wavname, char *errstr, std::string wav
 #endif // NO_SF
 
 #ifdef _WINDOWS
+
+#ifndef NO_PLAYSND
+
 EXP_CS void CSignals::PlayArray(char *errstr)
 {
 	PlayArray(0, errstr);
@@ -2557,6 +2726,8 @@ EXP_CS void CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hAppl
 	continuePlay(DevID, Buffer2Play, nSamples, nChan, userDefinedMsgID, nProgReport, errstr);
 }
 
+#endif // NO_PLAYSND
+
 #endif
 
 #ifndef NO_FFTW
@@ -2565,26 +2736,43 @@ EXP_CS double * CSignals::FFT(int len)
 {
 	MakeChainless();
 	len = min(nSamples,len);
+	int nFFTr2cOut = len/2+1;
 
-	double *in;
+	double *in, *out2;
 	fftw_complex *out;
-	fftw_plan p;
+	fftw_plan p, p2;
 
 	in = (double*) fftw_malloc(sizeof(double) * len);
-	out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * len);
+	out2 = (double*) fftw_malloc(sizeof(double) * len);
+	out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * nFFTr2cOut);
 	memcpy(in, buf, sizeof(double)*len);
 
 	p = fftw_plan_dft_r2c_1d(len, in, out, FFTW_ESTIMATE);
 	fftw_execute(p);
 
-	UpdateBuffer(len);
-	memcpy(buf, out[0], sizeof(double)*len);
-	if (next == NULL)	next = new CSignal(1);
-	next->UpdateBuffer(len);
-	memcpy(next->buf, out[1], sizeof(double)*len);
+	//FILE *fp=fopen("fftout.txt","wt");
+	//for (int k=0; k<nFFTr2cOut; k++)
+	//{
+	//	fprintf(fp, "%d:\t%8.5e\t%8.5e\n", k, out[k][0], out[k][1]);
+	//}
+	//fclose(fp);
+
+	SetComplex();
+	memcpy(cbuf, out, sizeof(*cbuf)*nFFTr2cOut);
+
+	complex<double> *tp = reinterpret_cast<complex<double> *> (out);
+	for (int k(1); k<nFFTr2cOut; k++)
+		cbuf[nSamples-k] = conj(tp[k]);
+
+	p2 = fftw_plan_dft_c2r_1d(len, out, out2, FFTW_ESTIMATE);
+	fftw_execute(p2);
+
 	fftw_destroy_plan(p);
+	fftw_destroy_plan(p2);
 	fftw_free(in); 
 	fftw_free(out);
+	fftw_free(out2);
+	*this /= (double)len;
 	return buf;
 }
 
@@ -2592,26 +2780,41 @@ EXP_CS double * CSignals::iFFT(void)
 {
 	MakeChainless();
 	int len = nSamples;
-
-	fftw_complex *in;
-	double *out;
+	bool loop(true);
 	fftw_plan p;
 
-	out = (double*) fftw_malloc(sizeof(double) * len);
-	in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * len);
-	memcpy(in[0], buf, sizeof(double)*len);
-	memcpy(in[1], next->buf, sizeof(double)*len);
+	//Check if it's complex
+	if (IsComplex())
+	{
+		//check if it's Hermitian
+		for (int k=1; loop && k<len/2; k=k+2)
+		{
+			if (cbuf[k] != conj(cbuf[len-k])) loop = false;
+		}
+		if (!loop) { /*do c2c */ return buf;}
 
-	p = fftw_plan_dft_c2r_1d(len, in, out, FFTW_ESTIMATE);
+		fftw_complex *in;
+		double *out;
 
-	fftw_execute(p);
+		out = (double*) fftw_malloc(sizeof(double) * len);
+		in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (len/2+1) );
+		memcpy(in, cbuf, sizeof(*cbuf)*(len/2));
+		fftw_complex* tp = reinterpret_cast<fftw_complex*>(cbuf);
+		if ( len%2 == 0 )
+		{
+			memcpy(&in[len/2], &cbuf[len/2], sizeof(*cbuf));
+		}
 
-	for (int k=0; k<len; k++) out[k] /= len;
-	memcpy(buf, out, sizeof(double)*len);
-	delete next; next = NULL;
+		p = fftw_plan_dft_c2r_1d(len, in, out, FFTW_ESTIMATE);
+
+		fftw_execute(p);
+		memcpy(buf, out, sizeof(double)*len);
+		bufBlockSize = 1; 
+		*this /= (double)len;
+		fftw_free(in); 
+		fftw_free(out);
+	}
 	fftw_destroy_plan(p);
-	fftw_free(in); 
-	fftw_free(out);
 	return buf;
 }
 
@@ -2635,6 +2838,15 @@ EXP_CS double * CSignals::ShiftFreq(double shift)
 	if (next!=NULL) next->ShiftFreq(shift);
 	return buf;
 }
+
+EXP_CS double * CSignals::TCTS(double freq, double ratio)
+{
+	CSignal::TCTS(freq, ratio);
+	if (next!=NULL) next->TCTS(freq, ratio);
+	return buf;
+}
+
+
 
 #endif
 

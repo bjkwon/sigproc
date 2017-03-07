@@ -27,6 +27,22 @@ void aux_set(CAstSig &ast, const AstNode *pnode, const AstNode *p);
 void aux_get(CAstSig &ast, const AstNode *pnode, const AstNode *p);
 #endif
 
+complex<double> ddsqrt(complex<double> x) {	return sqrt(x); }
+complex<double> cmpexp(complex<double> x) {	return exp(x); }
+complex<double> cmpcos(complex<double> x) {	return cos(x); }
+complex<double> cmpcosh(complex<double> x) { return cosh(x); }
+complex<double> cmplog(complex<double> x) {	return log(x); }
+complex<double> cmplog10(complex<double> x) { return log10(x); }
+complex<double> cmpsin(complex<double> x) {	return sin(x); }
+complex<double> cmpsinh(complex<double> x) { return sinh(x); }
+complex<double> cmptan(complex<double> x) {	return tan(x); }
+complex<double> cmptanh(complex<double> x) { return tanh(x); }
+
+double cmpreal(complex<double> x) { return real(x); }
+double cmpimag(complex<double> x) { return imag(x); }
+double cmpabs(complex<double> x) {	return abs(x); }
+//double cmpnorm(complex<double> x) { return norm(x); }
+double cmpangle(complex<double> x) { return arg(x); }
 
 void EnumAudioVariables(CAstSig &ast, vector<string> &var)
 {
@@ -70,11 +86,11 @@ void checkAudioSig(const AstNode *pnode, CSignals &checkthis, string addmsg)
 		throw CAstException(pnode, (msg+addmsg).c_str());
 }
 
-void checkCommplexSig(const AstNode *pnode, CSignals &checkthis, string addmsg)
+void checkComplex (const AstNode *pnode, CSignals &checkthis)
 {
 	string msg("A complex vector is required ");
-	if (checkthis.GetType()!=CSIG_VECTOR || !checkthis.next)
-		throw CAstException(pnode, (msg+addmsg).c_str());
+	if (checkthis.GetType()!=CSIG_COMPLEX)
+		throw CAstException(pnode, msg.c_str());
 }
 
 void checkVector(const AstNode *pnode, CSignals &checkthis, string addmsg)
@@ -109,6 +125,13 @@ void blockString(const AstNode *pnode, CSignals &checkthis)
 {
 	string msg("Not valid with a string variable ");
 	if (checkthis.GetType()==CSIG_STRING)
+		throw CAstException(pnode, msg.c_str());
+}
+
+void blockComplex(const AstNode *pnode, CSignals &checkthis)
+{
+	string msg("Not valid with a complex variable ");
+	if (checkthis.GetType()==CSIG_COMPLEX)
 		throw CAstException(pnode, msg.c_str());
 }
 
@@ -156,6 +179,11 @@ double aux_fix(const double x)
 }
 
 double aux_exp(const double x, const double y)
+{
+	return pow(y,x);
+}
+
+complex<double> aux_cexp(complex<double> x, complex<double> y)
 {
 	return pow(y,x);
 }
@@ -616,7 +644,7 @@ void aux_wavwrite(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	string filename = ast.MakeFilename(ast.ComputeString(p->next), "wav");
 	CAstSig _ast(&ast);
 	_ast.Compute(p);
-	checkAudioSig(pnode, ast.Sig);
+	checkAudioSig(pnode, _ast.Sig);
 	if (p->next->next!=NULL)
 	{
 		CSignals second = ast.Compute(p->next->next);
@@ -636,6 +664,7 @@ void aux_wavwrite(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 
 
 #ifdef _WINDOWS
+#ifndef NO_PLAYSND
 void aux_playstop(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
 	TerminatePlay();
@@ -686,6 +715,7 @@ void aux_play(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		ast.Sig.PlayArray(0, 0, NULL, &dontcare, errstr);
 	}
 }
+#endif // NO_PLAYSND
 
 void aux_show(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
@@ -697,7 +727,7 @@ void aux_show(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	caption << "Line " << pnode->line;
 	aux_sprintf(ast, pnode, p);
 	MessageBox(NULL, ast.Sig.string().c_str(), caption.str().c_str(), MB_ICONINFORMATION);
-};
+}
 
 int dcomp( const void * arg1, const void * arg2 )
 {
@@ -914,6 +944,25 @@ void aux_ones(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 
 #ifndef NO_FFTW
 
+void aux_time_comp_stret(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{ // time compression or time stretch
+	const char *fnsigs[] = {
+		"(signal, scalar)", 0};
+	checkNumArgs(pnode, p, fnsigs, 2, 3);
+	char errstr[256] = "";
+	CSignals third, second = ast.Compute(p->next);
+	if (p->next->next) {	// 3 args
+		third = ast.Compute(p->next->next);
+		if (!third.IsScalar())	throw CAstException(pnode, p, fnsigs, "3rd argument must be a scalar.");
+	} else {				// 2 args
+		if (!second.IsScalar())	throw CAstException(pnode, p, fnsigs, "2nd argument must be a scalar.");
+	}
+	ast.Compute(p);
+	if (ast.Sig.nSamples <= 1)
+		throw CAstException(pnode, p, fnsigs, "1st argument must be a signal.");
+	ast.Sig.TCTS(second.value(), third.value() );
+}
+
 void aux_shift_spectrum(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 { // $ operator
 	const char *fnsigs[] = {
@@ -938,20 +987,23 @@ void aux_fft(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
 	const string fname = pnode->str;
 	const char *fnsigs[] = {
-		"(signal, [nSamples=512])", 0};
+		"(signal, [nSamples=(length of signal)])", 0};
 	checkNumArgs(pnode, p, fnsigs, 1, 2);
-	int n = 512;
+
+	CSignals prim = ast.Compute(p);
+	blockCell(pnode, prim);
+	blockScalar(pnode, prim);
+	blockString(pnode, prim);
+	int n = prim.nSamples;
 	if (p->next) {
-		ast.Compute(p->next);
-		if (!ast.Sig.IsScalar())
+		CSignals sec = ast.Compute(p->next);
+		if (!sec.IsScalar())
 			throw CAstException(pnode, p->next, fnsigs, "2nd argument must be a scalar.");
-		n = round(ast.Sig.value());
+		n = round(sec.value());
 		if (n <= 0)
 			throw CAstException(pnode, p->next, fnsigs, "2nd argument must be a positive number.");
 	}
-	ast.Compute(p);
-	if (ast.Sig.nSamples <= 1)
-		throw CAstException(pnode, p, fnsigs, "1st argument must be a signal.");
+	ast.Sig = prim;
 	ast.Sig.SetFs(1);
 	ast.Sig.FFT(n);
 };
@@ -977,6 +1029,7 @@ void aux_ifft(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		"(vector)", 0};
 	checkNumArgs(pnode, p, fnsigs, 1, 1);
 	ast.Compute(p);
+	checkComplex(pnode, ast.Sig);
 	if (ast.Sig.nSamples <= 1)
 		throw CAstException(pnode, p, fnsigs, "argument must be a vector.");
 	ast.Sig.SetFs(ast.GetFs());
@@ -1238,23 +1291,24 @@ void aux_iir(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 }
 #endif // NO_IIR
 
-void aux_cabs(CAstSig &ast, const AstNode *pnode, const AstNode *p)
-{
-	const char *fnsigs[] = { "(complex_signal)", 0};
-	checkNumArgs(pnode, p, fnsigs, 1, 1);
-	ast.Compute(p);
-	ast.Sig.Mag();
-	delete ast.Sig.next; ast.Sig.next = NULL;
-}
 
-void aux_angle(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+void aux_csqrt(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
+	complex<double> (*cfn1)(complex<double>) = ddsqrt;
+	double (*fn1)(double) = sqrt;
+
 	const char *fnsigs[] = { "(complex_signal)", 0};
 	checkNumArgs(pnode, p, fnsigs, 1, 1);
 	ast.Compute(p);
-	checkCommplexSig(pnode, ast.Sig);
-	ast.Sig.Angle();
-	delete ast.Sig.next; ast.Sig.next = NULL;
+	if (ast.Sig.GetType()==CSIG_AUDIO)
+		ast.Sig.each(fn1);
+	else
+	{
+		//Sig should be either negative or complex
+		if (!ast.Sig.IsComplex())
+			ast.Sig.SetComplex();
+		ast.Sig.each(cfn1);
+	}
 }
 
 void aux_stereo(CAstSig &ast, const AstNode *pnode, const AstNode *p)
@@ -1510,6 +1564,7 @@ void HandleExp1(const AstNode *pnode, CSignals &Sig)
 }
 
 
+
 void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 {
 	string fname = pnode->str;
@@ -1519,6 +1574,9 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 
 	double (*fn1)(double) = NULL;
 	double (*fn2)(double, double) = NULL;
+	double (*cfn0)(complex<double>) = NULL;
+	complex<double> (*cfn1)(complex<double>) = NULL;
+	complex<double> (*cfn2)(complex<double>, complex<double>) = NULL;
 
 	//The following functions produces audio output(s).
 	if (fname == "tone")			aux_tone(*this, pnode, p);
@@ -1549,24 +1607,35 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 #endif // NO_IIR
 	else if (fname == "stereo")		aux_stereo(*this, pnode, p);
 	else if (fname == "left" ||
-			 fname == "right" ||
-			fname == "real" ||
-			 fname == "imag" )		aux_left_right(*this, pnode, p);
-	else if (fname == "angle")		aux_angle(*this, pnode, p);
-
+			 fname == "right" )		aux_left_right(*this, pnode, p);
 	else if (fname == "vector")		aux_vector(*this, pnode, p); 
-
-	else if (fname == "abs")	{ CSignals sg = Compute(p); if (sg.GetType()==CSIG_VECTOR && sg.next) aux_cabs(*this, pnode, p); else fn1 = fabs;}
+	else if (fname == "abs")	{ if (Compute(p).GetType()==CSIG_COMPLEX) cfn0 = cmpabs; 	else	fn1 = fabs;}
+	else if (fname == "real")	{ if (Compute(p).GetType()==CSIG_COMPLEX) cfn0 = cmpreal; 	else	{ Sig.SetReal(); return;} 	}
+	else if (fname == "imag")	{ if (Compute(p).GetType()==CSIG_COMPLEX) cfn0 = cmpimag; 	else	{ Sig.SetReal(); Sig.SetValue(0); return;} 	}
+	else if (fname == "angle")	{ 
+		Compute(p); 
+		Sig.SetComplex(); 
+		Sig.each(cmpangle);	
+		Sig.SetReal();}
+	//	else if (fname == "")	{ if (Compute(p).GetType()==CSIG_COMPLEX) cfn0 = cmp; 	else	fn1 = ;}
 	else if (fname == "db")		fn1 = aux_db;
 	else if (fname == "sgn")	fn1 = aux_sgn;
-	else if (fname == "sin")	fn1 = sin;
-	else if (fname == "cos")	fn1 = cos;
-	else if (fname == "tan")	fn1 = tan;
-	else if (fname == "atan")	fn1 = atan;
-	else if (fname == "log")	fn1 = log;
-	else if (fname == "log10")	fn1 = log10;
-	else if (fname == "exp")	fn1 = exp;
-	else if (fname == "sqrt")	fn1 = sqrt;
+	else if (fname == "sin")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmpsin; else fn1=sin;
+	else if (fname == "cos")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmpcos; else fn1=cos;
+	else if (fname == "tan")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmptan; else fn1=tan;
+	else if (fname == "asin")	fn1=asin;
+	else if (fname == "acos")	fn1=acos;
+	else if (fname == "atan")	fn1=atan;
+//	else if (fname == "")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmp; else fn1=;
+	else if (fname == "log")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmplog; else fn1=log;
+	else if (fname == "log10")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmplog10; else fn1=log10;
+	else if (fname == "exp")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmpexp; else fn1=exp;
+	else if (fname == "sqrt")	{ 
+		CSignals sg = Compute(p); 
+		if (sg.GetType()==CSIG_COMPLEX || ((datachunk)sg).Min()<0) 
+			aux_csqrt(*this, pnode, p); 
+		else 
+			fn1 = sqrt;}
 	else if (fname == "round")	fn1 = aux_round;
 	else if (fname == "fix")	fn1 = aux_fix;
 	else if (fname == "ceil")	fn1 = ceil;
@@ -1610,6 +1679,7 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	else if (fname == "hilbert")	aux_hilbert(*this, pnode, p);
 	else if (fname == "shift")		aux_shift(*this, pnode, p);
 	else if (fname == "shift_spectrum")	aux_shift_spectrum(*this, pnode, p);
+	else if (fname == "tcts")	aux_time_comp_stret(*this, pnode, p);
 	else if (fname == "filt" ||
 			 fname == "filtfilt")	aux_filt(*this, pnode, p);
 #endif //NO_FFTW
@@ -1627,9 +1697,11 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 #endif
 
 #ifdef _WINDOWS
+#ifndef NO_PLAYSND
 	else if (fname == "play")		aux_play(*this, pnode, p);
 	else if (fname == "stop")	aux_playstop(*this, pnode, p);
 	else if (fname == "playloop")	aux_playloop(*this, pnode, p);
+#endif // NO_PLAYSND
 	else if (fname == "show")		aux_show(*this, pnode, p);
 	else if (fname == "HOOK" ||
 			 fname[0] == '#')		aux_HOOK(*this, pnode, p);
@@ -1639,17 +1711,37 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 		throw CAstException(pnode, msg);
 		}
 
-	if (fn1) {
+	if (cfn1) {
 		const char *fnsigs[] = {"(scalar or vector)", 0};
 		checkNumArgs(pnode, p, fnsigs, 1, 1);
 		Compute(p);
-		Sig.each(fn1);	} 
+		if (!Sig.IsComplex())	Sig.SetComplex();	
+		Sig.each(cfn1);	
+	} 
+	else if (fn1) 
+	{
+		const char *fnsigs[] = {"(scalar or vector)", 0};
+		checkNumArgs(pnode, p, fnsigs, 1, 1);
+		Compute(p);
+		Sig.each(fn1);	
+	} 	
+	else if (cfn0) 
+	{
+		const char *fnsigs[] = {"(scalar or vector)", 0};
+		checkNumArgs(pnode, p, fnsigs, 1, 1);
+		Compute(p);
+		Sig.each(cfn0);	
+//		Sig.SetReal(); // SetReal should not be called here. Instead, it is taken care of by directly handling buf inside datachunk::each(double (*fn)(complex<double>)) 
+	} 
 	else if (fn2)
 	{
 		const char *fnsigs[] = {"(scalar or vector, scalar or vector_of_equal_length)", 0};
 		checkNumArgs(pnode, p, fnsigs, 2, 2);
-		CSignals arg2 = Compute(p->next);
-		Compute(p);
-		Sig.each(fn2,arg2);
+		CSignals arg2 = Compute(p->next); // do not change the order of these two lines
+		CSignals arg1 = Compute(p); //  do not change the order of these two lines --why?--because Sig needs to hold arg1
+		if (fn2 == aux_exp && (arg1.IsComplex() || arg2.IsComplex() || ((datachunk)arg1).Min()<0))  
+		{	Sig.SetComplex(); arg2.SetComplex(); cfn2 = aux_cexp; Sig.each(cfn2,arg2); }
+		else
+			Sig.each(fn2,arg2);
 	}
 }
