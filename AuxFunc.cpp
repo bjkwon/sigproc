@@ -6,12 +6,19 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
-#include "sigproc.h"
-#include "psycon.tab.h"
 
 #ifdef _WINDOWS
 #include "audfret.h"
 #endif
+
+#include "sigproc.h"
+#ifndef CISIGPROC
+#include "psycon.tab.h"
+#else
+#include "cipsycon.tab.h"
+#endif
+
+
 
 void checkVector(const AstNode *pnode, CSignals &checkthis, string addmsg="");
 void checkCommplexSig(const AstNode *pnode, CSignals &checkthis, string addmsg="");

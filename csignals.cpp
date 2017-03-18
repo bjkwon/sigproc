@@ -1,7 +1,10 @@
-#include "sigplus_internal.h"
 #ifdef _WINDOWS
+#ifndef _MFC_VER // If MFC is used.
 #include <windows.h>
-#endif
+#else 
+#include "afxwin.h"
+#endif 
+#endif 
 #include <math.h>
 #include <limits> 
 #include <stdlib.h>
@@ -9,6 +12,7 @@
 #include <vector>
 #include <algorithm>
 
+#include "sigplus_internal.h"
 #include "samplerate.h"
 #include "sndfile.h"
 //#include "common.h"
@@ -21,6 +25,9 @@
 #define CRIT  100. // Threshold for computing rms is above 100th of its max
 
 #define RETURN_0_MSG(str) {	strcpy(errstr, str);		return 0;	}
+
+void filter(int nTabs, double *num, double *den, int length, double *in, double *out);
+void filter(int nTabs, double *num, int length, double *in, double *out);
 
 void PlayBufAsynch16(UINT DevID, short *dataBuffer, int length, int nChan, int fs, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, int *errcode, int loop, char* errstr);
 void continuePlay(UINT DevID, SHORT *dataBuffer, int length, int nChan, UINT userDefinedMsgID, int nProgReport, char *errstr);
@@ -154,7 +161,7 @@ datachunk::~datachunk()
 	if (buf) delete[] buf;
 }
 
-datachunk& datachunk::UpdateBuffer(int length)	// Set nSamples. Re-allocate buf if necessary to accommodate new length.
+EXP_CS datachunk& datachunk::UpdateBuffer(int length)	// Set nSamples. Re-allocate buf if necessary to accommodate new length.
 {
 	size_t currentBufsize = bufBlockSize * nSamples; 
 	size_t reqBufSize = bufBlockSize * length; 
@@ -357,7 +364,7 @@ CSignal& CSignal::Reset(int fs2set)	// Empty all data fields - sets nSamples to 
 	return *this;
 }
 
-void CSignal::SetChain(CSignal *unit, double time_shifted)
+EXP_CS void CSignal::SetChain(CSignal *unit, double time_shifted)
 {
 	if (unit!=NULL)
 	{
@@ -367,7 +374,7 @@ void CSignal::SetChain(CSignal *unit, double time_shifted)
 	}
 }
 
-void CSignal::SetChain(double time_shifted)
+EXP_CS void CSignal::SetChain(double time_shifted)
 {
 	if (nSamples>0)
 	{
@@ -377,7 +384,7 @@ void CSignal::SetChain(double time_shifted)
 	}
 }
 
-CSignal& CSignal::operator=(const CSignal& rhs)
+EXP_CS CSignal& CSignal::operator=(const CSignal& rhs)
 {   // Make a deep copy only for buf, but not for sc, because sc is not necessarily dynamically allocated.
 	// Thus, BE Extra careful when making writing an assignment statement about the scaling..
 	if (this != &rhs) 
@@ -397,7 +404,7 @@ CSignal& CSignal::operator=(const CSignal& rhs)
 	return *this; // return self-reference so cascaded assignment works
 }
 
-void CSignal::SwapContents1node(CSignal &sec)
+EXP_CS void CSignal::SwapContents1node(CSignal &sec)
 {	// swaps  fs, buf(shallow), chain(shallow), tmark, tfraction, BufSize, nSamples  (cell added but not sure if that's OK. bjkwon 4/3/2016)
 	// *** Leaves "next" intact!!!
 	CSignal tmp(fs);
@@ -408,7 +415,7 @@ void CSignal::SwapContents1node(CSignal &sec)
 	tmp.buf = NULL, tmp.chain = NULL, tmp.tmark = 0, /*tmp.tfraction = 0,*/ /*tmp.BufSize = 0,*/ tmp.nSamples = 0;
 }
 
-CSignal& CSignal::operator+=(const double con) 
+EXP_CS CSignal& CSignal::operator+=(const double con) 
 { 
 	for (int i=0; i<nSamples; i++) 
 		buf[i*bufBlockSize] += con; 
@@ -417,7 +424,7 @@ CSignal& CSignal::operator+=(const double con)
 	return *this; 
 } 
 
-CSignal& CSignal::operator*=(const double con)
+EXP_CS CSignal& CSignal::operator*=(const double con)
 { 
 	for (int i=0; i<nSamples; i++) 
 		buf[i*bufBlockSize] *= con; 
@@ -426,7 +433,7 @@ CSignal& CSignal::operator*=(const double con)
 	return *this; 
 } 
 
-CSignal& CSignal::operator+=(CSignal &sec) 
+EXP_CS CSignal& CSignal::operator+=(CSignal &sec) 
 { 
 	if (IsEmpty() || GetType()==CSIG_NULL) return (*this=sec);
 	if (sec.IsEmpty() || sec.GetType()==CSIG_NULL) return *this;
@@ -452,7 +459,7 @@ CSignal& CSignal::operator+=(CSignal &sec)
 } 
 
 
-CSignal& CSignal::operator*=(CSignal &sec) 
+EXP_CS CSignal& CSignal::operator*=(CSignal &sec) 
 { 
 	if (IsEmpty() || GetType()==CSIG_NULL) return (*this=sec);
 	if (sec.IsEmpty() || sec.GetType()==CSIG_NULL) return *this;
@@ -519,7 +526,7 @@ const CSignal& CSignal::operator+=(CSignal *yy)
 	return *this;
 }
 
-void CSignal::AddMultChain(char type, CSignal *sec) 
+EXP_CS void CSignal::AddMultChain(char type, CSignal *sec) 
 { 
 	if (fs!=1 && sec->fs!=1 && fs != sec->fs)  throw "The sampling rates of both operands must be the same."; 
 
@@ -620,7 +627,7 @@ void CSignal::AddMultChain(char type, CSignal *sec)
 	*this = out.ConnectChains();
 }
 
-CSignal& CSignal::ConnectChains()
+EXP_CS CSignal& CSignal::ConnectChains()
 {
 	CSignal *p(this), out(fs);
 	if (p==NULL || p->chain==NULL) return *this;
@@ -678,28 +685,28 @@ CSignal& CSignal::ConnectChains()
 }
 
 
-CSignal& CSignal::operator-=(CSignal &sec)
+EXP_CS CSignal& CSignal::operator-=(CSignal &sec)
 {
 	return *this += -sec;
 }
-CSignal& CSignal::operator-(void)	// Unary minus
+EXP_CS CSignal& CSignal::operator-(void)	// Unary minus
 {
 	for (int i=0; i<nSamples; i++)		buf[i] = -buf[i];
 	if (chain)	-*chain;
 	return *this;
 }
 
-CSignal& CSignal::operator/=(double scaleFactor)
+EXP_CS CSignal& CSignal::operator/=(double scaleFactor)
 {
 	return *this *= 1.0/scaleFactor;
 }
 
-CSignal& CSignal::operator/=(CSignal &scaleArray)
+EXP_CS CSignal& CSignal::operator/=(CSignal &scaleArray)
 {
 	return *this *= scaleArray.Reciprocal();
 }
 
-CSignal& CSignal::Reciprocal(void)
+EXP_CS CSignal& CSignal::Reciprocal(void)
 {
 	if (IsScalar())
 		SetValue(1.0/value());
@@ -712,7 +719,7 @@ CSignal& CSignal::Reciprocal(void)
 	return *this;
 }
 
-CSignal& CSignal::operator<<=(const double delta)
+EXP_CS CSignal& CSignal::operator<<=(const double delta)
 {
 	*this>>=(-delta);
 	return *this;
@@ -751,7 +758,7 @@ CSignal& CSignal::operator>>=(const double delta)
 	return *this;
 }
 
-CSignal& CSignal::operator<(const CSignal &sec)
+EXP_CS CSignal& CSignal::operator<(const CSignal &sec)
 {
 	if (!IsScalar() || !sec.IsScalar())
 		throw "The operands of operator '<' must be scalars.";
@@ -780,7 +787,7 @@ bool CSignal::operator==(const CSignal &sec) const
 	return false;
 }
 
-CSignal& CSignal::operator!()
+EXP_CS CSignal& CSignal::operator!()
 {
 	if (!IsScalar())
 		throw "The operand of operator '!' must be scalars.";
@@ -788,7 +795,7 @@ CSignal& CSignal::operator!()
 	return *this;
 }
 
-CSignal& CSignal::operator&&(const CSignal &sec)
+EXP_CS CSignal& CSignal::operator&&(const CSignal &sec)
 {
 	if (!IsScalar() || !sec.IsScalar())
 		throw "The operands of operator '&&' must be scalars.";
@@ -796,7 +803,7 @@ CSignal& CSignal::operator&&(const CSignal &sec)
 	return *this;
 }
 
-CSignal& CSignal::operator||(const CSignal &sec)
+EXP_CS CSignal& CSignal::operator||(const CSignal &sec)
 {
 	if (!IsScalar() || !sec.IsScalar())
 		throw "The operands of operator '!=' must be scalars.";
@@ -804,7 +811,7 @@ CSignal& CSignal::operator||(const CSignal &sec)
 	return *this;
 }
 
-void CSignal::AddChain(CSignal &sec)
+EXP_CS void CSignal::AddChain(CSignal &sec)
 { // assume that nSamples>1 in both. 
 	//MAKE SURE TO AVOID CIRCULAR CHAINING....IT WILL CREATE A STACK OVERFLOW
 
@@ -850,7 +857,7 @@ int CSignal::CountChains()
 	return res;
 }
 
-double CSignal::alldur()
+EXP_CS double CSignal::alldur()
 {
 	CSignal *p = GetDeepestChain();
 	if (p!=NULL)	return p->tmark + p->dur()+(double)1./fs*1000.;
@@ -886,7 +893,7 @@ double CSignal::MakeChainless()
 }
 
 
-double CSignal::RMS()
+EXP_CS double CSignal::RMS()
 { // This does not go into next.... for stereo signals, call RMS specifically, like next->RMS()  bjk 4/23/2016
 	double cum(0);
 	int count(0);
@@ -899,7 +906,7 @@ double CSignal::RMS()
 	return _getdB(sqrt(cum/count));
 }
 
-CSignal& CSignal::Interp(const CSignal& gains, const CSignal& tmarks)
+EXP_CS CSignal& CSignal::Interp(const CSignal& gains, const CSignal& tmarks)
 {
 	if (gains.nSamples!=tmarks.nSamples)
 		throw "The length of both arguments of interp( ) must be the same.";
@@ -920,19 +927,19 @@ CSignal& CSignal::Interp(const CSignal& gains, const CSignal& tmarks)
 	return *this;
 }
 
-CSignal& CSignal::Take(CSignal& out, int id1)
+EXP_CS CSignal& CSignal::Take(CSignal& out, int id1)
 { // if ending point is missed, it assumes the end of the whole duration.
 	if (id1==0) {out = *this; return out;}
 	return Take(out, id1, nSamples-1);
 }
 
-CSignal& CSignal::Take(CSignal& out, double begin_ms)
+EXP_CS CSignal& CSignal::Take(CSignal& out, double begin_ms)
 { // if ending point is missed, it assumes the end of the whole duration.
 	int id1 = round(begin_ms/1000.*fs);
 	return Take(out, id1, nSamples-1);
 }
 
-CSignal& CSignal::Take(CSignal& out, int id1, int id2)
+EXP_CS CSignal& CSignal::Take(CSignal& out, int id1, int id2)
 {
 	id2 = min (nSamples, id2);
 	if (id2<id1)		return *this;
@@ -943,7 +950,7 @@ CSignal& CSignal::Take(CSignal& out, int id1, int id2)
 	return out;
 }
 
-CSignal& CSignal::Take(CSignal& out, double begin_ms, double end_ms)
+EXP_CS CSignal& CSignal::Take(CSignal& out, double begin_ms, double end_ms)
 { /* if id1 is negative, zero's are added before the waveform.
   if id2 is greater than current length, the end of current array will be taken.
 	
@@ -958,7 +965,7 @@ CSignal& CSignal::Take(CSignal& out, double begin_ms, double end_ms)
 	return out;
 }
 
-CSignal& CSignal::MergeChains()
+EXP_CS CSignal& CSignal::MergeChains()
 {// This tidy things up by removing unnecessary chains and rearranging them.
 	CSignal temp;
 	if (nSamples==0 && chain) {temp = *chain; chain=NULL; *this = temp; }
@@ -988,7 +995,7 @@ CSignal& CSignal::MergeChains()
 
 }
 
-CSignal& CSignal::MC(CSignal &out, vector<double> tmarks, int id1, int id2)
+EXP_CS CSignal& CSignal::MC(CSignal &out, vector<double> tmarks, int id1, int id2)
 {
 	CSignal parts;
 	double tp1 = ((double)id1/fs)*1000.;
@@ -1029,7 +1036,7 @@ CSignal& CSignal::MC(CSignal &out, vector<double> tmarks, int id1, int id2)
 	return *this = out;
 }
 
-CSignal& CSignal::MakeChains(vector<double> tmarks)
+EXP_CS CSignal& CSignal::MakeChains(vector<double> tmarks)
 { // check if this runs OK with Trim
 	CSignal out(fs), parts, copy(*this), *p(this);
 	for (vector<double>::reverse_iterator iter=tmarks.rbegin(); iter!=tmarks.rend(); iter +=2, p=p->chain)
@@ -1147,14 +1154,14 @@ void CSignal::Dramp(double dur_ms, int beginID)
 	}
 }
 
-double * CSignal::Noise(double dur_ms)
+EXP_CS double * CSignal::Noise(double dur_ms)
 {
 	int nSamplesNeeded = round(dur_ms/1000.*fs);
 	double *p = Noise(nSamplesNeeded);
 	return p;
 }
 
-double * CSignal::Noise(int nsamples)
+EXP_CS double * CSignal::Noise(int nsamples)
 {
 	Reset();
 	UpdateBuffer(nsamples); //allocate memory if necessary
@@ -1166,14 +1173,14 @@ double * CSignal::Noise(int nsamples)
 	return buf;
 }
 
-double * CSignal::Noise2 (double dur_ms)
+EXP_CS double * CSignal::Noise2 (double dur_ms)
 { //Gaussian noise
 	int nSamplesNeeded = round(dur_ms/1000.*fs); 
 	double *p = Noise2(nSamplesNeeded);
 	return p;
 }
 
-double * CSignal::Noise2 (int nsamples)
+EXP_CS double * CSignal::Noise2 (int nsamples)
 { //Gaussian noise
 	double fac, r, v1, v2, sum(0.);
 	Reset();
@@ -1197,7 +1204,7 @@ double * CSignal::Noise2 (int nsamples)
 
 #ifndef NO_RESAMPLE
 
-double * CSignal::fm2(CSignal flutter, int multiplier, char *errstr)
+EXP_CS double * CSignal::fm2(CSignal flutter, int multiplier, char *errstr)
 {   // Modulate the entire signal by the array flutter ( > 1, fast-forward, higher-pitched, < 1 slow-down, lower-pitched
 	// the length of flutter should be A LOT shorter than nSamples (e.g., 1 tendth of it), but that is checked and exception is handled in AuxFunc.cpp
 	flutter *= multiplier;
@@ -1230,7 +1237,7 @@ double * CSignal::fm2(CSignal flutter, int multiplier, char *errstr)
 
 #endif //NO_RESAMPLE
 
-double * CSignal::fm(double midFreq, double fmWidth, double fmRate, int nsamples, double beginFMPhase)
+EXP_CS double * CSignal::fm(double midFreq, double fmWidth, double fmRate, int nsamples, double beginFMPhase)
 {   // beginFMPhase is to be set. (beginPhase is zero here ==> Its not so meaningful to set both of them)
 	double t;
 	Reset();
@@ -1243,14 +1250,14 @@ double * CSignal::fm(double midFreq, double fmWidth, double fmRate, int nsamples
 	return buf;
 }
 
-double * CSignal::fm(double midFreq, double fmWidth, double fmRate, double dur_ms, double beginFMPhase)
+EXP_CS double * CSignal::fm(double midFreq, double fmWidth, double fmRate, double dur_ms, double beginFMPhase)
 {   
 	int nSamplesNeeded = round(dur_ms/1000.*fs); 
 	double *p = fm(midFreq, fmWidth, fmRate, nSamplesNeeded, beginFMPhase);
 	return p;
 }
 
-double * CSignal::Tone(vector<double> freqs, int len)
+EXP_CS double * CSignal::Tone(vector<double> freqs, int len)
 { // freqs: array of desired instantaneous frequencies requested
   // fval: coefficient inside the sine term in each instance
   // for a constant frequency, fval is always the same as specfied frequency, but in general, it is not
@@ -1283,14 +1290,14 @@ double * CSignal::Tone(vector<double> freqs, int len)
 	return buf;
 }
 
-double * CSignal::Tone(vector<double> freqs, double dur_ms)
+EXP_CS double * CSignal::Tone(vector<double> freqs, double dur_ms)
 {
 	int nSamplesNeeded = round(dur_ms/1000.*fs); 
 	double *p = Tone(freqs, nSamplesNeeded);
 	return p;
 }
 
-double * CSignal::Tone(double freq, int nsamples, double beginPhase)
+EXP_CS double * CSignal::Tone(double freq, int nsamples, double beginPhase)
 {
 	Reset();
 	UpdateBuffer(nsamples); //allocate memory if necessary
@@ -1299,7 +1306,7 @@ double * CSignal::Tone(double freq, int nsamples, double beginPhase)
 	return buf;
 }
 
-double * CSignal::Tone(double freq, double dur_ms, double beginPhase)
+EXP_CS double * CSignal::Tone(double freq, double dur_ms, double beginPhase)
 {
 	int nSamplesNeeded = round(dur_ms/1000.*fs);
 	double *p = Tone(freq, nSamplesNeeded, beginPhase);
@@ -1309,7 +1316,7 @@ double * CSignal::Tone(double freq, double dur_ms, double beginPhase)
 
 #include "fftw3.h"
 
-double * CSignal::Hilbert(int len)
+EXP_CS double * CSignal::Hilbert(int len)
 {
 	if (len<1)		return NULL;
 	len = min(nSamples,len);
@@ -1358,7 +1365,7 @@ double * CSignal::Hilbert(int len)
 }
 
 
-double * CSignal::ShiftFreq(double shift)
+EXP_CS double * CSignal::ShiftFreq(double shift)
 {
 	CSignals copy(*this);
 	Hilbert(nSamples);
@@ -1375,7 +1382,7 @@ double * CSignal::ShiftFreq(double shift)
 	return buf;
 }
 
-double * CSignal::TCTS(double freq, double ratio)
+EXP_CS double * CSignal::TCTS(double freq, double ratio)
 {
 	CSignals copy(*this);
 	char errstr[256]="";
@@ -1391,7 +1398,7 @@ double * CSignal::TCTS(double freq, double ratio)
 
 
 
-double * CSignal::HilbertEnv(int len)
+EXP_CS double * CSignal::HilbertEnv(int len)
 {
 	CSignal phaseshifted(*this), out(fs);
 	phaseshifted.Hilbert(len);
@@ -1405,7 +1412,7 @@ double * CSignal::HilbertEnv(int len)
 
 #endif 
 /* This works but is slower.....
-double * CSignal::HilbertEnv(int len)
+EXP_CS double * CSignal::HilbertEnv(int len)
 {
 	CSignals copy(*this);
 	Hilbert(len);
@@ -1422,7 +1429,7 @@ double * CSignal::HilbertEnv(int len)
 }
 */
 
-CSignal& CSignal::Replace(CSignal &newsig, double t1, double t2)
+EXP_CS CSignal& CSignal::Replace(CSignal &newsig, double t1, double t2)
 { // signal portion between t1 and t2 is replaced by newsig
  // t1 and t2 are in ms
 //	double lastendtofnewsig = newsig.GetDeepestChain()->endt();
@@ -1444,7 +1451,7 @@ CSignal& CSignal::Replace(CSignal &newsig, double t1, double t2)
 }
 
 
-CSignal& CSignal::Insert(double timept, CSignal &newchunk)
+EXP_CS CSignal& CSignal::Insert(double timept, CSignal &newchunk)
 {
 	int id ;
 	// Be careful, this is not a virtual function. So, when called from CSignals, this is a pointer to CSignal
@@ -1525,14 +1532,14 @@ CSignal& CSignal::Insert(double timept, CSignal &newchunk)
 
 }
 
-double * CSignal::Truncate(double time_ms1, double time_ms2)
+EXP_CS double * CSignal::Truncate(double time_ms1, double time_ms2)
 { // Returns integer buffer pointer, to "extract" a signals object, use Take() member function
 	int id1 = round(time_ms1/1000.*fs);
 	int id2 = round(time_ms2/1000.*fs)-1;
 	return Truncate(id1, id2);
 }
 
-double * CSignal::Truncate(int id1, int id2, int code)
+EXP_CS double * CSignal::Truncate(int id1, int id2, int code)
 {
 	id1 = max(0, id1);
 	if (id1>id2) {
@@ -1561,14 +1568,14 @@ double * CSignal::Truncate(int id1, int id2, int code)
 	return buf;
 }
 
-double * CSignal::Silence(double dur_ms)
+EXP_CS double * CSignal::Silence(double dur_ms)
 {
 	int nSamplesNeeded = round(dur_ms/1000.*fs); 
 	double *p = Silence(nSamplesNeeded);
 	return p;
 }
 
-double * CSignal::Silence(int nsamples)
+EXP_CS double * CSignal::Silence(int nsamples)
 {
 	Reset();
 	UpdateBuffer(nsamples); //allocate memory if necessary
@@ -1578,14 +1585,14 @@ double * CSignal::Silence(int nsamples)
 	return buf;
 }
 
-double * CSignal::DC(double dur_ms)
+EXP_CS double * CSignal::DC(double dur_ms)
 {
 	int nSamplesNeeded = round(dur_ms/1000.*fs); 
 	double *p = DC(nSamplesNeeded);
 	return p;
 }
 
-double * CSignal::DC(int nsamples)
+EXP_CS double * CSignal::DC(int nsamples)
 {
 	Reset();
 	UpdateBuffer(nsamples); //allocate memory if necessary
@@ -1720,7 +1727,7 @@ vector<double> CSignal::Min()
 
 #ifndef NO_RESAMPLE
 
-double * CSignal::Resample(vector<int> newfs, vector<int> lengths, char *errstr)
+EXP_CS double * CSignal::Resample(vector<int> newfs, vector<int> lengths, char *errstr)
 { // This is not really for resampling but only used for the % operator with a vector (variable_ratio)
 	//Therefore, fs is not updated.
 	MakeChainless();
@@ -1771,7 +1778,7 @@ double * CSignal::Resample(vector<int> newfs, vector<int> lengths, char *errstr)
 	return buf;
 }
 
-double * CSignal::Resample(int newfs, char *errstr) // Revised in Dec09---noted for JHPARK
+EXP_CS double * CSignal::Resample(int newfs, char *errstr) // Revised in Dec09---noted for JHPARK
 {
 	MakeChainless();
 	errstr[0]=0;
@@ -1893,7 +1900,7 @@ void CSignal::filtfilt(int nTabs, double *num)
 	delete[] den;
 }
 
-void CSignal::ReverseTime()
+EXP_CS void CSignal::ReverseTime()
 {
 	MakeChainless();
 
@@ -1963,7 +1970,7 @@ int CSignal::IIR(int kind, int type, int order, double *freqs, double passRipple
 
 #endif // NO_IIR
 
-std::string CSignal::string()
+EXP_CS std::string CSignal::string()
 {
 	int k;
 	std::string out;
@@ -1974,7 +1981,7 @@ std::string CSignal::string()
 	return out;
 }
 
-char *CSignal::getString(char *str, const int size)
+EXP_CS char *CSignal::getString(char *str, const int size)
 {
 	int i;
 	for (i=0; i<nSamples && i<size-1; ++i)
@@ -1983,7 +1990,7 @@ char *CSignal::getString(char *str, const int size)
 	return str;
 }
 
-CSignal &CSignal::SetString(const char *str)
+EXP_CS CSignal &CSignal::SetString(const char *str)
 {
 	Reset(2);
 	UpdateBuffer(strlen(str));
@@ -1992,7 +1999,7 @@ CSignal &CSignal::SetString(const char *str)
 	return *this;
 }
 
-CSignal &CSignal::SetString(const char c)
+EXP_CS CSignal &CSignal::SetString(const char c)
 {
 	Reset(2);
 	if (c==0) return *this;

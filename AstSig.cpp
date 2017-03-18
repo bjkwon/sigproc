@@ -4,7 +4,12 @@
 #include <math.h>
 #include <time.h>
 #include "sigproc.h"
+
+#ifndef CISIGPROC
 #include "psycon.tab.h"
+#else
+#include "cipsycon.tab.h"
+#endif
 
 void checkVector(const AstNode *pnode, CSignals &checkthis, string addmsg="");
 void checkAudioSig(const AstNode *pnode, CSignals &checkthis, string addmsg="");
@@ -124,6 +129,9 @@ CAstSig &CAstSig::SetNewScript(const char *str, AstNode *pAstOut)
 		}
 		throw errmsg;
 	}
+	else if (!res)
+		return *this;
+
 	Script = str;
 	if ((pAstOut!=NULL) && (pAst!=NULL)) 
 		*pAstOut = *pAst;
@@ -573,9 +581,11 @@ try {
 		break;
 	case NODE_RESTRING:
 		break;
+#ifndef CISIGPROC
 	case T_DUR:
 		Sig = Compute(pAst_context).alldur();
 		break;
+#endif //CISIGPROC
 	case NODE_EXTRACT:
 		double t[2];
 		pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
@@ -686,10 +696,12 @@ try {
 			}
 		}
 		break;
+#ifndef CISIGPROC
 	case T_LENGTH:
 		tsig = Compute(pAst_context);
 		Sig.SetValue(tsig.nSamples);
 		break;
+#endif //CISIGPROC
 	case NODE_CALL: // built-in function calls come here
 		if (p && !p->next /* only one argument */ && (psig = RetrieveTag(pnode->str))) {
 			if (psig->GetType()==CSIG_CELL) throw CAstException(p, "A cell array cannot be accessed with ( ).");

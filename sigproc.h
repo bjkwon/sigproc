@@ -2,7 +2,7 @@
 
 #ifndef SIGPROC
 #define SIGPROC
-#endif
+
 
 #define PI	3.141592
 #define LOG10DIV20 0.1151292546497
@@ -10,11 +10,14 @@
 
 //If this library is linked statically define LINK_STATIC_SIGPROC in the application project.
 #ifndef LINK_STATIC_SIGPROC
+#ifdef SIGPROC_INTERNAL
 #define EXP_CS __declspec (dllexport)
+#else
+#define EXP_CS __declspec (dllimport)
+#endif // SIGPROC_INTERNAL
 #else
 #define EXP_CS
 #endif
-
 
 #define CSIG_TYPEERROR	0
 #define CSIG_STRING		1
@@ -26,9 +29,16 @@
 #define CSIG_CELL		7
 #define CSIG_COMPLEX	8
 
+
+
 #ifdef _WINDOWS
+#ifndef _MFC_VER // If MFC is used.
 #include <windows.h>
-#endif
+#else 
+#include "afxwin.h"
+#endif 
+#endif 
+
 #include <string>
 #include <iostream>
 #include <list>
@@ -58,19 +68,19 @@ public:
 	datachunk(const datachunk& src);
 	datachunk(double value);
 	datachunk(complex<double> value);
-	datachunk(double *y, int len);
+	datachunk(double *y, int  len);
 
 	datachunk& operator=(const datachunk& rhs);
 	virtual ~datachunk();
-	datachunk& UpdateBuffer(int length);
-	void Reset() {nSamples = 0;}
-	double value(void) const {if (nSamples==1) return buf[0]; else if (nSamples==0) throw "value( ) on null."; else throw "value( ) on vector.";}
+	EXP_CS datachunk& UpdateBuffer(int  length);
+	EXP_CS void Reset() {nSamples = 0;}
+	EXP_CS double value(void) const {if (nSamples==1) return buf[0]; else if (nSamples==0) throw "value( ) on null."; else throw "value( ) on vector.";}
 	void SetValue(double v) {delete[] buf; buf = new double[1]; nSamples=1; buf[0]=v; }
 	void SetValue(complex<double> v) {delete[] buf; buf = new double[2]; bufBlockSize=2; nSamples=1; cbuf[0]=v; }
-	void SetComplex();
-	void SetReal();
-	bool IsComplex() const  { return (bufBlockSize==2); } 
-	void SwapContents1node(datachunk &sec);
+	EXP_CS void SetComplex();
+	EXP_CS void SetReal();
+	EXP_CS bool IsComplex() const  { return (bufBlockSize==2); } 
+	EXP_CS void SwapContents1node(datachunk &sec);
 
 	datachunk &each(double (*fn)(double));
 	datachunk &each(double (*fn)(complex<double>));
@@ -80,12 +90,12 @@ public:
 
 	datachunk &transpose1();
 
-	double Sum();
-	double Min(int &id);
-	double Min() {int id; return Min(id);}
-	double Max(int &id);
-	double Max() {int id; return Max(id);}
-	double Mean() {return Sum()/(double)nSamples;}
+	EXP_CS double Sum();
+	EXP_CS double Min(int  &id);
+	EXP_CS double Min() {int id; return Min(id);}
+	EXP_CS double Max(int  &id);
+	EXP_CS double Max() {int id; return Max(id);}
+	EXP_CS double Mean() {return Sum()/(double)nSamples;}
 };
 
 class CSignal : public datachunk
@@ -95,150 +105,148 @@ public:
 	CSignal *chain;
 
 	// Signal generation (no stereo handling)
-	double * fm(double midFreq, double fmWidth, double fmRate, int nsamples, double beginFMPhase=0.);
-	double * fm(double midFreq, double fmWidth, double fmRate, double dur_ms, double beginFMPhase=0.);
-	double * fm2(CSignal flutter, int multiplier, char *errstr);
-	double * Silence(int nsamples);
-	double * Silence(double dur_ms);
-	double * DC(double dur_ms);
-	double * DC(int nsamples);
-	double * Tone(vector<double> freqs, int nsamples);
-	double * Tone(vector<double> freqs, double dur_ms);
-	double * Tone(double freq, int nsamples, double beginPhase=0.);
-	double * Tone(double freq, double dur_ms, double beginPhase=0.);
-//	double * Tone(double *freqs, int nsamples);
-	double * Noise(double dur_ms);
-	double * Noise(int nsamples);
-	double * Noise2(double dur_ms);
-	double * Noise2(int nsamples);
-	double * Truncate(double time_ms1, double time_ms2);
-	double * Truncate(int id1, int id2, int code=0);
+	EXP_CS double * fm(double midFreq, double fmWidth, double fmRate, int  nsamples, double beginFMPhase=0.);
+	EXP_CS double * fm(double midFreq, double fmWidth, double fmRate, double dur_ms, double beginFMPhase=0.);
+	EXP_CS double * fm2(CSignal flutter, int  multiplier, char *errstr);
+	EXP_CS double * Silence(int  nsamples);
+	EXP_CS double * Silence(double dur_ms);
+	EXP_CS double * DC(double dur_ms);
+	EXP_CS double * DC(int  nsamples);
+	EXP_CS double * Tone(vector<double> freqs, int  nsamples);
+	EXP_CS double * Tone(vector<double> freqs, double dur_ms);
+	EXP_CS double * Tone(double freq, int  nsamples, double beginPhase=0.);
+	EXP_CS double * Tone(double freq, double dur_ms, double beginPhase=0.);
+	EXP_CS double * Noise(double dur_ms);
+	EXP_CS double * Noise(int  nsamples);
+	EXP_CS double * Noise2(double dur_ms);
+	EXP_CS double * Noise2(int  nsamples);
+	EXP_CS double * Truncate(double time_ms1, double time_ms2);
+	EXP_CS double * Truncate(int  id1, int  id2, int  code=0);
 
 	// Window functions
-	//double * Hann(int len);	// Use Blackman with alpha=0
-	double * Hamming(int len);
-	double * Blackman(int len, double alp=0.16);
+	//EXP_CS double * Hann(int  len);	// Use Blackman with alpha=0
+	EXP_CS double * Hamming(int  len);
+	EXP_CS double * Blackman(int  len, double alp=0.16);
 
 	// Signal alteration (stereo handling with a clean, inarguable convention)
 #ifndef NO_IIR
-	int IIR(int kind, int type, int order, double *freqs, double passRipple_dB, double stopFreqORAttenDB, char *errstr);
+	EXP_CS int IIR(int  kind, int  type, int  order, double *freqs, double passRipple_dB, double stopFreqORAttenDB, char *errstr);
 #endif // NO_IIR
 	int filtfilt(const CSignal& num, const CSignal& den, char *errstr);
-	virtual void filtfilt(int nTabs, double *num, double *den);
-	void filtfilt(int nTabs, double *num);
-	void Filter(int nTabs, double *num);
-	virtual void Filter(int nTabs, double *num, double *den);
+	virtual void filtfilt(int  nTabs, double *num, double *den);
+	void filtfilt(int  nTabs, double *num);
+	void Filter(int  nTabs, double *num);
+	virtual void Filter(int  nTabs, double *num, double *den);
 	int Filter(const CSignal& num, const CSignal& den, char *errstr);
 #ifndef NO_FFTW
-	virtual double * Hilbert(int len);
-	virtual double * HilbertEnv(int len);
+	virtual double * Hilbert(int  len);
+	virtual double * HilbertEnv(int  len);
 	virtual double * ShiftFreq(double shift);
 	virtual double * TCTS(double freq, double ratio);
 #endif
-	virtual void DownSample(int q);
-	virtual void UpSample(int p);
-	virtual CSignal& Reset(int fs2set=0);
+	virtual void DownSample(int  q);
+	virtual void UpSample(int  p);
+	virtual CSignal& Reset(int  fs2set=0);
 #ifndef NO_RESAMPLE
-	virtual double * Resample(int newfs, char *errstr);
+	virtual double * Resample(int  newfs, char *errstr);
 	virtual double * Resample(vector<int> newfs, vector<int> lengths, char *errstr);
 #endif //NO_RESAMPLE
-	virtual void Dramp(double dur_ms, int beginID=0);
-	void ReverseTime();
-	CSignal& Interp(const CSignal& gains, const CSignal& tmarks);
-	CSignal& operator=(const CSignal& rhs);
-	CSignal& operator*=(const double con);
-	CSignal& operator*=(CSignal &scaleArray);
-	CSignal& operator+=(CSignal &sec);
-	CSignal& operator+=(const double con);
-	CSignal& operator-(void);	// Unary minus
-	CSignal& operator-=(CSignal &sec);
-	CSignal& Reciprocal(void);	// Multiplicative inverse
-	CSignal& operator/=(CSignal &scaleArray);
-	CSignal& operator/=(double scaleFactor);
+	virtual void Dramp(double dur_ms, int  beginID=0);
+	EXP_CS void ReverseTime();
+	EXP_CS CSignal& Interp(const CSignal& gains, const CSignal& tmarks);
+	EXP_CS CSignal& operator=(const CSignal& rhs);
+	EXP_CS CSignal& operator*=(const double con);
+	EXP_CS CSignal& operator*=(CSignal &scaleArray);
+	EXP_CS CSignal& operator+=(CSignal &sec);
+	EXP_CS CSignal& operator+=(const double con);
+	EXP_CS CSignal& operator-(void);	// Unary minus
+	EXP_CS CSignal& operator-=(CSignal &sec);
+	EXP_CS CSignal& Reciprocal(void);	// Multiplicative inverse
+	EXP_CS CSignal& operator/=(CSignal &scaleArray);
+	EXP_CS CSignal& operator/=(double scaleFactor);
 
 	virtual CSignal& operator>>=(const double delta);
-	CSignal& operator<<=(const double delta);
+	EXP_CS CSignal& operator<<=(const double delta);
 
-	CSignal& operator<(const CSignal &sec);
-	CSignal& operator>(const CSignal &sec);
-	CSignal& operator<=(const CSignal &sec);
-	CSignal& operator>=(const CSignal &sec);
+	EXP_CS CSignal& operator<(const CSignal &sec);
+	EXP_CS CSignal& operator>(const CSignal &sec);
+	EXP_CS CSignal& operator<=(const CSignal &sec);
+	EXP_CS CSignal& operator>=(const CSignal &sec);
 	bool operator==(const CSignal &sec) const;
 	bool operator!=(const CSignal &sec) const {return !(*this == sec);}
-	CSignal& operator!();
-	CSignal& operator&&(const CSignal &sec);
-	CSignal& operator||(const CSignal &sec);
+	EXP_CS CSignal& operator!();
+	EXP_CS CSignal& operator&&(const CSignal &sec);
+	EXP_CS CSignal& operator||(const CSignal &sec);
 
-	void SwapContents1node(CSignal &sec);
+	EXP_CS void SwapContents1node(CSignal &sec);
 	// Signal alteration (stereo handling with an established convention)
 	virtual const CSignal& operator+=(CSignal *yy); // Concatenation
 
 	// Signal extraction (stereo handling with a clean, inarguable convention)
-	CSignal& Take(CSignal& out, int id1);
-	CSignal& Take(CSignal& out, double begin_ms);
-	CSignal& Take(CSignal& out, int id1, int id2);
-	CSignal& Take(CSignal& out, double begin_ms, double end_ms);
+	EXP_CS CSignal& Take(CSignal& out, int  id1);
+	EXP_CS CSignal& Take(CSignal& out, double begin_ms);
+	EXP_CS CSignal& Take(CSignal& out, int  id1, int  id2);
+	EXP_CS CSignal& Take(CSignal& out, double begin_ms, double end_ms);
 
 	virtual CSignal& Trim(double begin_ms, double end_ms);
 	virtual CSignal& timeshift(double tp_ms);
 	virtual CSignal& removeafter(double timems);
 
 
-	int WriteAXL(FILE* fp);
+	EXP_CS int WriteAXL(FILE* fp);
 
 	// Retrieve signal characteristics (single channel ONLY)
-	int GetType() const; 
+	EXP_CS int GetType() const; 
 	vector<double> Sum();
 	vector<double> Mean();
 	vector<int> MinId();
 	vector<double> Min();
 	vector<int> MaxId();
 	vector<double> Max();
-	double RMS();
-	int GetFs() const {return fs; };
-	int length() const {if (GetType() == CSIG_STRING) return (int)strlen(strbuf); else return nSamples;};
-	void SetFs(int newfs) {fs = newfs; };
-	double* GetBuffer() {return buf;}
-	double dur() {return (double)nSamples/fs*1000.;}// duration in miliseconds
-	double endt() {return tmark + dur();}// end time point in miliseconds
-	bool IsScalar() const {return (GetType() == CSIG_SCALAR);}
-	bool IsEmpty() const {return (GetType() == CSIG_EMPTY);}
-	bool IsSingle() const {return ( (GetType() == CSIG_SCALAR || GetType() == CSIG_COMPLEX || GetType() == CSIG_STRING) && nSamples==1);}
-	bool IsString() const {return (fs == 2);}
-	bool IsComplex() const  { return (bufBlockSize==2); } 
-	int IsNull(double timept);
-	CSignal& Insert(double timept, CSignal &newchunk);
-	CSignal& Replace(CSignal &newsig, double t1, double t2);
+	EXP_CS double RMS();
+	EXP_CS int GetFs() const {return fs; };
+	EXP_CS int length() const {if (GetType() == CSIG_STRING) return (int)strlen(strbuf); else return nSamples;};
+	EXP_CS void SetFs(int  newfs) {fs = newfs; };
+	EXP_CS double* GetBuffer() {return buf;}
+	EXP_CS double dur() {return (double)nSamples/fs*1000.;}// duration in miliseconds
+	EXP_CS double endt() {return tmark + dur();}// end time poEXP_CS int in miliseconds
+	EXP_CS bool IsScalar() const {return (GetType() == CSIG_SCALAR);}
+	EXP_CS bool IsEmpty() const {return (GetType() == CSIG_EMPTY);}
+	EXP_CS bool IsSingle() const {return ( (GetType() == CSIG_SCALAR || GetType() == CSIG_COMPLEX || GetType() == CSIG_STRING) && nSamples==1);}
+	EXP_CS bool IsString() const {return (fs == 2);}
+	EXP_CS bool IsComplex() const  { return (bufBlockSize==2); } 
+	EXP_CS int IsNull(double timept);
+	EXP_CS CSignal& Insert(double timept, CSignal &newchunk);
+	EXP_CS CSignal& Replace(CSignal &newsig, double t1, double t2);
 
 	CSignal(); // default construct
-	CSignal(int sampleRate); // construct with a specified sample rate.
+	CSignal(int  sampleRate); // construct with a specified sample rate.
 	CSignal(double value); // construct a scala with the specified value
 	CSignal(const CSignal& src); // copy constructor
-	CSignal(double *y, int len);
+	CSignal(double *y, int  len);
 	CSignal(FILE* fp);
 	CSignal(string str); // make a string CSignal
 
 	virtual ~CSignal();	// standard destructor
 
-//	CSignal *DetachNextChan() {CSignal *p=next;next=NULL;return p;}
-	void SetChain(CSignal *unit, double time_shifted=0.);
-	void SetChain(double time_shifted);
-	void AddChain(CSignal &sec);
+	EXP_CS void SetChain(CSignal *unit, double time_shifted=0.);
+	EXP_CS void SetChain(double time_shifted);
+	EXP_CS void AddChain(CSignal &sec);
 	CSignal * GetDeepestChain();
 	CSignal * ExtractDeepestChain(CSignal *deepchain);
-	int CountChains();
-	void AddMultChain(char type, CSignal *forthis);
+	EXP_CS int CountChains();
+	EXP_CS void AddMultChain(char type, CSignal *forthis);
 	CSignal * BreakChain(CSignal *chainedout);
-	double alldur();
+	EXP_CS double alldur();
 	virtual double MakeChainless();
-	CSignal& MakeChains(std::vector<double> tmarks);
-	CSignal& MC(CSignal &out, std::vector<double> tmarks, int id1, int id2);
-	CSignal& MergeChains();
-	CSignal& ConnectChains();
-	string string();
-	char *getString(char *str, const int size);
-	CSignal &SetString(const char *str);
-	CSignal &SetString(const char c);
+	EXP_CS CSignal& MakeChains(std::vector<double> tmarks);
+	EXP_CS CSignal& MC(CSignal &out, std::vector<double> tmarks, int  id1, int  id2);
+	EXP_CS CSignal& MergeChains();
+	EXP_CS CSignal& ConnectChains();
+	EXP_CS string string();
+	EXP_CS char *getString(char *str, const int size);
+	EXP_CS CSignal &SetString(const char *str);
+	EXP_CS CSignal &SetString(const char c);
 
 	CSignal &each(double (*fn)(double));
 	CSignal &each(double (*fn)(complex<double>));
@@ -260,10 +268,10 @@ public:
 	vector<CSignal> cell;
 
 	EXP_CS CSignals();
-	EXP_CS CSignals(int sampleRate);
+	EXP_CS CSignals(int  sampleRate);
 	EXP_CS CSignals(FILE* fp);
 	EXP_CS CSignals(double value);
-	EXP_CS CSignals(double *y, int len);
+	EXP_CS CSignals(double *y, int  len);
 	EXP_CS CSignals(const CSignal& src);
 	EXP_CS CSignals(const CSignals& src);
 	EXP_CS ~CSignals();
@@ -308,34 +316,34 @@ public:
 	EXP_CS void SetNextChan(CSignal *second);
 	EXP_CS double value() const;
 	EXP_CS CSignal *DetachNextChan() {CSignal *p=next;next=NULL;return p;}
-	EXP_CS CSignals& Reset(int fs2set=0);
+	EXP_CS CSignals& Reset(int  fs2set=0);
 	EXP_CS CSignals& Reciprocal(void);
 	EXP_CS CSignals& operator-(void);
 	EXP_CS CSignals& operator>>=(const double delta);
-	EXP_CS CSignals& Take(CSignals& out, int id1, int id2);
+	EXP_CS CSignals& Take(CSignals& out, int  id1, int  id2);
 	EXP_CS CSignals& Trim(double begin_ms, double end_ms);
 //	EXP_CS CSignals& timeshift(double tp_ms);
-	EXP_CS void Dramp(double dur_ms, int beginID=0);
-	EXP_CS double * Modulate (double *env, int lenEnv);
+	EXP_CS void Dramp(double dur_ms, int  beginID=0);
+	EXP_CS double * Modulate (double *env, int  lenEnv);
 	EXP_CS CSignals& Insert(double timept, CSignals &newchunk);
 	EXP_CS CSignals& Replace(CSignals &newsig, double t1, double t2);
 
 	EXP_CS double * Mag();
 	EXP_CS CSignal Angle();
 #ifndef NO_RESAMPLE
-	EXP_CS double * Resample(int newfs, char *errstr);
+	EXP_CS double * Resample(int  newfs, char *errstr);
 	EXP_CS double * Resample(vector<int> newfs, vector<int> lengths, char *errstr);
-	EXP_CS double * fm2(CSignal flutter, int multiplier, char *errstr);
+	EXP_CS double * fm2(CSignal flutter, int  multiplier, char *errstr);
 #endif // NO_RESAMPLE
-	EXP_CS void DownSample(int q);
-	EXP_CS void UpSample(int p);
-	EXP_CS void Filter(int nTabs, double *num, double *den);
-	EXP_CS void filtfilt(int nTabs, double *num, double *den);
+	EXP_CS void DownSample(int  q);
+	EXP_CS void UpSample(int  p);
+	EXP_CS void Filter(int  nTabs, double *num, double *den);
+	EXP_CS void filtfilt(int  nTabs, double *num, double *den);
 #ifndef NO_FFTW
-	EXP_CS double * FFT(int len);
+	EXP_CS double * FFT(int  len);
 	EXP_CS double * iFFT(void);
-	EXP_CS double * Hilbert(int len);
-	EXP_CS double * HilbertEnv(int len);
+	EXP_CS double * Hilbert(int  len);
+	EXP_CS double * HilbertEnv(int  len);
 	EXP_CS double * ShiftFreq(double shift);
 	EXP_CS double * TCTS(double freq, double ratio);
 #endif
@@ -346,15 +354,14 @@ public:
 	EXP_CS CSignals &each(complex<double> (*fn)(complex<double>, complex<double>), datachunk &arg2);
 	CSignals &transpose1() {CSignal::transpose1(); if (next) next->transpose1(); return *this;}
 
-
 #ifdef _WINDOWS
 #ifndef NO_PLAYSND
 	// Sound Playback functions
-	EXP_CS void PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr, int loop=0); // playing with event notification by specified time block
-	EXP_CS void PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr, int loop=0); // full format
-	EXP_CS void PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr);
-	EXP_CS void PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr); // full format
-	EXP_CS void PlayArray(int DevID, char *errstr); // (blocking play)
+	EXP_CS void PlayArray(int  DevID, int userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr, int  loop=0); // playing with event notification by specified time block
+	EXP_CS void PlayArray(int  DevID, int userDefinedMsgID, HWND hApplWnd, int  nProgReport, char *errstr, int  loop=0); // full format
+	EXP_CS void PlayArrayNext(int  DevID, int userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr);
+	EXP_CS void PlayArrayNext(int  DevID, int userDefinedMsgID, HWND hApplWnd, int  nProgReport, char *errstr); // full format
+	EXP_CS void PlayArray(int  DevID, char *errstr); // (blocking play)
 	EXP_CS void PlayArray(char *errstr); //assuming the first device
 #endif // NO_PLAYSND
 
@@ -364,8 +371,8 @@ public:
 	EXP_CS int Wavread(const char *wavname, char *errstr);
 #endif // NO_SF
 #endif //_WINDOWS
-//private:
-	short * makebuffer(int &nChan);
+private:
+	short * makebuffer(int  &nChan);
 };
 
 class CAstException {
@@ -380,8 +387,8 @@ public:
 	EXP_CS CAstException(const AstNode *p0, const char* msg);
 	string getErrMsg() const {return outstr;};
 private:
-	void makeOutStr() {makeOutStr(pnode);}
-	void makeOutStr(const AstNode *p);
+	EXP_CS void makeOutStr() {makeOutStr(pnode);}
+	EXP_CS void makeOutStr(const AstNode *p);
 };
 
 class CAstSig;
@@ -413,8 +420,8 @@ private:
 	string Script;
 	bool fAllocatedAst, fExit, fBreak, fContinue;
 
-	void initGlobals(const CAstSig *env);
-	void HandleAuxFunctions(const AstNode *pnode);
+	EXP_CS void initGlobals(const CAstSig *env);
+	EXP_CS void HandleAuxFunctions(const AstNode *pnode);
 	CSignals &CallSub(const AstNode *pUDF, const AstNode *pCall);
 	map<int,CSignals> *RetrieveArray(const char *arrayname);
 	AstNode *RetrieveUDF(const char *fname);
@@ -465,14 +472,8 @@ public:
 
 #ifdef _WINDOWS
 //Global functions
-EXP_CS double LeveldBrms (const char *wave, double *level2, char *errstr);
-EXP_CS double LeveldBpeak (const char *wave, double *level2, char *errstr);
-EXP_CS int Rescale(const char *waveOut, const char *waveIn, double scaleFactor_dB, char *errstr); // 1 for success, -1 for clipping, 0 for failure,
-EXP_CS int ReadwavInfo(const char *wave, int *fs, int *nChan, int *lengthPerChan, char *errstr);
-EXP_CS int MakeMono(const char *waveIn, const char *waveOut,char *errstr);
-EXP_CS int WavCat(const char *waveOrg, const char *wave2Append, double delay, char *errstr);
 
-EXP_CS void LoopPlay(int onoff);
+EXP_CS void LoopPlay(int  onoff);
 EXP_CS void TerminatePlay();
 EXP_CS void PauseResumePlay(void *pWavePlay, bool fOnOff);
 EXP_CS void TerminateLoop(void *pWavePlay);
@@ -483,3 +484,5 @@ EXP_CS int WinMMSetVolume(DWORD vol);
 
 #endif
 EXP_CS void checkNumArgs(const AstNode *pnode, const AstNode *p, const char** FuncSigs, const int minArgs, const int maxArgs);
+
+#endif // SIGPROC
