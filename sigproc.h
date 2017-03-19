@@ -357,12 +357,12 @@ public:
 #ifdef _WINDOWS
 #ifndef NO_PLAYSND
 	// Sound Playback functions
-	EXP_CS void PlayArray(int  DevID, int userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr, int  loop=0); // playing with event notification by specified time block
-	EXP_CS void PlayArray(int  DevID, int userDefinedMsgID, HWND hApplWnd, int  nProgReport, char *errstr, int  loop=0); // full format
-	EXP_CS void PlayArrayNext(int  DevID, int userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr);
-	EXP_CS void PlayArrayNext(int  DevID, int userDefinedMsgID, HWND hApplWnd, int  nProgReport, char *errstr); // full format
-	EXP_CS void PlayArray(int  DevID, char *errstr); // (blocking play)
-	EXP_CS void PlayArray(char *errstr); //assuming the first device
+	EXP_CS int PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr, int  loop=0); // playing with event notification by specified time block
+	EXP_CS int PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int  nProgReport, char *errstr, int  loop=0); // full format
+	EXP_CS int PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr);
+	EXP_CS int PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int  nProgReport, char *errstr); // full format
+	EXP_CS int PlayArray(int DevID, char *errstr); // (blocking play)
+	EXP_CS int PlayArray(char *errstr); //assuming the first device
 #endif // NO_PLAYSND
 
 #ifndef NO_SF
@@ -482,7 +482,7 @@ EXP_CS HWND GetHWND_SIGPROC();
 EXP_CS DWORD WinMMGetVolume();
 EXP_CS int WinMMSetVolume(DWORD vol);
 
-#endif
+#endif // _WINDOWS
 EXP_CS void checkNumArgs(const AstNode *pnode, const AstNode *p, const char** FuncSigs, const int minArgs, const int maxArgs);
 
 #endif // SIGPROC

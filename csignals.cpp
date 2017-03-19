@@ -29,8 +29,8 @@
 void filter(int nTabs, double *num, double *den, int length, double *in, double *out);
 void filter(int nTabs, double *num, int length, double *in, double *out);
 
-void PlayBufAsynch16(UINT DevID, short *dataBuffer, int length, int nChan, int fs, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, int *errcode, int loop, char* errstr);
-void continuePlay(UINT DevID, SHORT *dataBuffer, int length, int nChan, UINT userDefinedMsgID, int nProgReport, char *errstr);
+int PlayBufAsynch16(UINT DevID, short *dataBuffer, int length, int nChan, int fs, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, int loop, char* errstr);
+int continuePlay(UINT DevID, SHORT *dataBuffer, int length, int nChan, UINT userDefinedMsgID, int nProgReport, char *errstr);
 void SetLoop();
 
 #define DOUBLE2SHORT(x)	((short)(max(min((x),1),-1)*(double)0x007fff))
@@ -2658,19 +2658,19 @@ EXP_CS int CSignals::Wavwrite(const char *wavname, char *errstr, std::string wav
 
 #ifndef NO_PLAYSND
 
-EXP_CS void CSignals::PlayArray(char *errstr)
+EXP_CS int CSignals::PlayArray(char *errstr)
 {
-	PlayArray(0, errstr);
+	return PlayArray(0, errstr);
 }
 
-EXP_CS void CSignals::PlayArray(int DevID, char *errstr)
+EXP_CS int CSignals::PlayArray(int DevID, char *errstr)
 { // returns a negative number if error occurrs
-	PlayArray(DevID, 0, NULL, 2, errstr); 
+	return PlayArray(DevID, 0, NULL, 2, errstr); 
 	// This is how you play in blocking mode (specify 2 for the nProgReport even though you are not utilizing any messaging back to hWnd.. This is just due to the way wavBuffer2snd is written in waves.cpp)
 	// Jan 19, 2013. BJ Kwon
 }
 
-EXP_CS void CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr, int loop)
+EXP_CS int CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr, int loop)
 {// returns a negative number if error occurrs
  // This play the sound by specified block duration, generating event notification in every block
  // block_dur_ms is adjusted by the quantization of fs. Therefore, user should check if it has beend adjusted during this call.
@@ -2679,10 +2679,10 @@ EXP_CS void CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd,
 	double _nBlocks = (double)nSamples / nSamples4Block;
 	int nBlocks = (int)_nBlocks;
 	if (_nBlocks - (double)nBlocks > 0.1) nBlocks++;
-	PlayArray(DevID, userDefinedMsgID, hApplWnd, nBlocks, errstr, loop);
+	return PlayArray(DevID, userDefinedMsgID, hApplWnd, nBlocks, errstr, loop);
 }
 
-EXP_CS void CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr)
+EXP_CS int CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr)
 {// returns a negative number if error occurrs
  // This play the sound by specified block duration, generating event notification in every block
  // block_dur_ms is adjusted by the quantization of fs. Therefore, user should check if it has beend adjusted during this call.
@@ -2691,7 +2691,7 @@ EXP_CS void CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hAppl
 	double _nBlocks = (double)nSamples / nSamples4Block;
 	int nBlocks = (int)_nBlocks;
 	if (_nBlocks - (double)nBlocks > 0.1) nBlocks++;
-	PlayArrayNext(DevID, userDefinedMsgID, hApplWnd, nBlocks, errstr);
+	return PlayArrayNext(DevID, userDefinedMsgID, hApplWnd, nBlocks, errstr);
 }
 
 short * CSignals::makebuffer(int &nChan)
@@ -2717,20 +2717,20 @@ short * CSignals::makebuffer(int &nChan)
 	return Buffer2Play;
 }
 
-EXP_CS void CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr, int loop)
+EXP_CS int CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr, int loop)
 {// Re-do error treatment 6/1/2016 bjk
 	errstr[0]=0;
 	int nChan, ecode(MMSYSERR_NOERROR);
 	short *Buffer2Play = makebuffer(nChan);
-	PlayBufAsynch16(DevID, Buffer2Play, nSamples, nChan, fs, userDefinedMsgID, hApplWnd, nProgReport, &ecode, loop, errstr);
+	return PlayBufAsynch16(DevID, Buffer2Play, nSamples, nChan, fs, userDefinedMsgID, hApplWnd, nProgReport, loop, errstr);
 }
 
-EXP_CS void CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr)
+EXP_CS int CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr)
 {
 	errstr[0]=0;
 	int nChan, ecode(MMSYSERR_NOERROR);
 	short *Buffer2Play = makebuffer(nChan);
-	continuePlay(DevID, Buffer2Play, nSamples, nChan, userDefinedMsgID, nProgReport, errstr);
+	return continuePlay(DevID, Buffer2Play, nSamples, nChan, userDefinedMsgID, nProgReport, errstr);
 }
 
 #endif // NO_PLAYSND
