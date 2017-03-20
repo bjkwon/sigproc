@@ -129,7 +129,7 @@ CAstSig &CAstSig::SetNewScript(const char *str, AstNode *pAstOut)
 		}
 		throw errmsg;
 	}
-	else if (!res)
+	else if (res)
 		return *this;
 
 	Script = str;

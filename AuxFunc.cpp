@@ -1633,7 +1633,6 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	else if (fname == "asin")	fn1=asin;
 	else if (fname == "acos")	fn1=acos;
 	else if (fname == "atan")	fn1=atan;
-//	else if (fname == "")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmp; else fn1=;
 	else if (fname == "log")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmplog; else fn1=log;
 	else if (fname == "log10")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmplog10; else fn1=log10;
 	else if (fname == "exp")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmpexp; else fn1=exp;
