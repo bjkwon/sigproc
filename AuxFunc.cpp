@@ -185,21 +185,60 @@ double aux_fix(const double x)
 	return (double)(int)x;
 }
 
-double aux_exp(const double x, const double y)
+double aux_exp(const double base, const double exponent)
 {
-	return pow(y,x);
+	return pow(base,exponent);
 }
 
-complex<double> aux_cexp(complex<double> x, complex<double> y)
+complex<double> aux_cexp(complex<double> base, complex<double> exponent)
 {
-	return pow(y,x);
+	return pow(base,exponent);
 }
 
-double aux_mod(const double x, const double y)
+double aux_mod(const double numer, const double denom)
 {
-	return fmod(x,y);
+	return fmod(numer,denom);
 }
 
+void aux_minmax(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	const char *fnsigs[] = {"(minimum or maximum value)", 0};
+	checkNumArgs(pnode, p, fnsigs, 1, 2);
+	int nArgs(0);
+	for (const AstNode *cp=p; cp; cp=cp->next)	++nArgs;
+	ast.Compute(p);
+	string fname = pnode->str;
+	if (nArgs==1)
+	{
+		CSignal dummy, *extracted, out(1);
+		int nChains = ast.Sig.CountChains();
+		out.UpdateBuffer(nChains); // need a separate output variable because, otherwise, Sig gets changed with this UpdateBuffer call.
+		int m(0);
+		bool loop(true);
+		while( (extracted = ast.Sig.ExtractDeepestChain(&dummy))!=&ast.Sig || loop )
+		{
+			if (fname == "max") out.buf[m++] = (double)((datachunk*)extracted)->Max();
+			else if (fname == "min") out.buf[m++] = (double)((datachunk*)extracted)->Min();
+			if (extracted == &ast.Sig) loop = false;
+		}
+		out.ReverseTime();
+		ast.Sig = out; // put it back.
+	}
+	else // 2
+	{
+		CSignals arg = ast.Compute(p->next);
+		ast.Compute(p);
+		if (arg.nSamples>1)
+		{
+			const char *fnsigs2[] = {"(For two arguments, at least one argument must be a scalar)", 0};
+			if (ast.Sig.nSamples>1)
+				throw CAstException(pnode, p, fnsigs2, "");
+			ast.Sig.SwapContents1node(arg);
+		}
+		if (fname=="max") 	ast.Sig.Max(arg.value());
+		else if (fname=="min") 	ast.Sig.Min(arg.value());
+	}
+}
 
 void aux_getfs(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
@@ -1648,13 +1687,15 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	else if (fname == "floor")	fn1 = floor;
 	else if (fname == "^")		fn2 = aux_exp;
 	else if (fname == "mod")	fn2 = aux_mod;
+	else if (fname == "min")	aux_minmax (*this, pnode, p);
+	else if (fname == "max")	aux_minmax (*this, pnode, p);
 
 	else if (fname == "length" || 
 			 fname == "dur" ||  fname == "begint" || fname == "endt" || // Only an audio arg
 			 fname == "sum" ||
 			 fname == "mean" ||
-			 fname == "max" || fname == "maxid" ||
-			 fname == "min" ||  fname == "minid" )
+			 fname == "maxid" ||
+			 fname == "minid" )
 			 HandleExp1(pnode, p?Compute(p):Sig);
 
 	else if (fname == "getfs")		aux_getfs(*this, pnode, p);
@@ -1743,11 +1784,11 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	{
 		const char *fnsigs[] = {"(scalar or vector, scalar or vector_of_equal_length)", 0};
 		checkNumArgs(pnode, p, fnsigs, 2, 2);
-		CSignals arg2 = Compute(p->next); // do not change the order of these two lines
-		CSignals arg1 = Compute(p); //  do not change the order of these two lines --why?--because Sig needs to hold arg1
-		if (fn2 == aux_exp && (arg1.IsComplex() || arg2.IsComplex() || ((datachunk)arg1).Min()<0))  
-		{	Sig.SetComplex(); arg2.SetComplex(); cfn2 = aux_cexp; Sig.each(cfn2,arg2); }
+		CSignals arg = Compute(p->next); // do not change the order of these two lines
+		Compute(p); //  to update Sig
+		if (fn2 == aux_exp && (Sig.IsComplex() || arg.IsComplex() || ((datachunk)Sig).Min()<0))  
+		{	Sig.SetComplex(); arg.SetComplex(); cfn2 = aux_cexp; Sig.each(cfn2,arg); }
 		else
-			Sig.each(fn2,arg2);
+			Sig.each(fn2,arg);
 	}
 }

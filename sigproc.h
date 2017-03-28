@@ -82,6 +82,8 @@ public:
 	EXP_CS bool IsComplex() const  { return (bufBlockSize==2); } 
 	EXP_CS void SwapContents1node(datachunk &sec);
 
+	EXP_CS datachunk &addmult(char type, datachunk &arg);
+
 	datachunk &each(double (*fn)(double));
 	datachunk &each(double (*fn)(complex<double>));
 	datachunk &each(complex<double> (*fn)(complex<double>));
@@ -96,6 +98,8 @@ public:
 	EXP_CS double Max(int  &id);
 	EXP_CS double Max() {int id; return Max(id);}
 	EXP_CS double Mean() {return Sum()/(double)nSamples;}
+	EXP_CS datachunk &Min(double crit);
+	EXP_CS datachunk &Max(double crit);
 };
 
 class CSignal : public datachunk
@@ -201,8 +205,10 @@ public:
 	vector<double> Mean();
 	vector<int> MinId();
 	vector<double> Min();
+	CSignal& Min(double crit);
 	vector<int> MaxId();
 	vector<double> Max();
+	CSignal& Max(double crit);
 	EXP_CS double RMS();
 	EXP_CS int GetFs() const {return fs; };
 	EXP_CS int length() const {if (GetType() == CSIG_STRING) return (int)strlen(strbuf); else return nSamples;};

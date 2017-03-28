@@ -722,7 +722,6 @@ try {
 				throw CAstException(p, "Index cannot be smaller than 1.");
 			if (mx > psig->nSamples)
 				throw CAstException(p, "Index exceeds size of vector.");
-			Sig.Reset(1); // extraction by indices will generate a non-audio array
 			Sig.UpdateBuffer(isig.nSamples);
 			if (psig->bufBlockSize==2) 
 			{
@@ -733,6 +732,7 @@ try {
 			else
 			{
 				Sig.SetReal();
+				Sig.SetFs(psig->GetFs());
 				for (int i=0; i<isig.nSamples; i++)
 					Sig.buf[i] = psig->buf[round(isig.buf[i])-1];	// -1 for one-based indexing
 			}

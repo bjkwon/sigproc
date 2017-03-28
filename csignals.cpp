@@ -216,6 +216,22 @@ void datachunk::SwapContents1node(datachunk &sec)
 	tmp.buf = NULL, tmp.nSamples = 0;
 }
 
+datachunk &datachunk::addmult(char type, datachunk &arg)
+{ // arg must be a vector
+	if (nSamples<arg.nSamples) SwapContents1node(arg);
+	switch(type)
+	{
+	case '+':
+		for (int k=0; k<min(nSamples, arg.nSamples); k++) 
+			buf[k] += arg.buf[k];
+		break;
+	case '*':
+		for (int k=0; k<min(nSamples, arg.nSamples); k++) 
+			buf[k] *= arg.buf[k];
+		break;
+	}
+	return *this;
+}
 
 datachunk &datachunk::each(double (*fn)(double))
 {
@@ -242,34 +258,44 @@ datachunk &datachunk::each(complex<double> (*fn)(complex<double>))
 	return *this;
 }
 
-datachunk &datachunk::each(double (*fn)(double, double), datachunk &arg2)
+datachunk &datachunk::each(double (*fn)(double, double), datachunk &arg)
 {
-	if (nSamples==1 && arg2.nSamples==1)
-		SwapContents1node(arg2);
-	if (arg2.nSamples==1) 
+	if (arg.nSamples==1) 
 	{
-		double val = arg2.value();
-		for (int i=0; i<nSamples; ++i)	buf[i] = fn(buf[i],val); 
+		double val = arg.value();
+		for (int k=0; k<nSamples; k++)	buf[k] = fn(buf[k],val); 
+	}
+	else if (nSamples==1) 
+	{
+		double baseval = buf[0];
+		UpdateBuffer(arg.nSamples);
+		for (int k=0; k<arg.nSamples; k++) buf[k] = fn(baseval, arg.buf[k]); 
 	}
 	else
 	{
-		for (int i=0; i<min(nSamples, arg2.nSamples); ++i) buf[i] = fn(buf[i], arg2.buf[i]); 
+		nSamples = min(nSamples, arg.nSamples);
+		for (int k=0; k<nSamples; k++) buf[k] = fn(buf[k], arg.buf[k]); 
 	}
 	return *this;
 }
 
-datachunk &datachunk::each(complex<double> (*fn)(complex<double>, complex<double>), datachunk &arg2)
+datachunk &datachunk::each(complex<double> (*fn)(complex<double>, complex<double>), datachunk &arg)
 {
-	if (nSamples==1 && arg2.nSamples==1)
-		SwapContents1node(arg2);
-	if (arg2.nSamples==1) 
+	if (arg.nSamples==1) 
 	{
-		complex<double> val = arg2.cbuf[0];
-		for (int i=0; i<nSamples; ++i)	cbuf[i] = fn(cbuf[i],val); 
+		complex<double> val = arg.cbuf[0];
+		for (int k=0; k<nSamples; k++)	cbuf[k] = fn(cbuf[k],val); 
+	}
+	else if (nSamples==1) 
+	{
+		complex<double> val = arg.cbuf[0];
+		UpdateBuffer(arg.nSamples);
+		for (int k=0; k<arg.nSamples; k++) cbuf[k] = fn(val, arg.cbuf[k]); 
 	}
 	else
 	{
-		for (int i=0; i<min(nSamples, arg2.nSamples); ++i) cbuf[i] = fn(cbuf[i], arg2.cbuf[i]); 
+		nSamples = min(nSamples, arg.nSamples);
+		for (int k=0; k<nSamples; k++) cbuf[k] = fn(cbuf[k], arg.buf[k]); 
 	}
 	return *this;
 }
@@ -279,6 +305,20 @@ double datachunk::Sum()
 	double sum(0.);
 	for (int i=0; i<nSamples; i++)		sum += buf[i];
 	return sum;
+}
+
+datachunk &datachunk::Min(double crit)
+{
+	for (int k=0; k<nSamples; k++)
+		if (buf[k]>crit) buf[k] = crit;
+	return *this;
+}
+
+datachunk &datachunk::Max(double crit)
+{
+	for (int k=0; k<nSamples; k++)
+		if (buf[k]<crit) buf[k] = crit;
+	return *this;
 }
 
 double datachunk::Max(int &id)
@@ -537,6 +577,23 @@ EXP_CS void CSignal::AddMultChain(char type, CSignal *sec)
 	CSignal out(sec->GetFs()), part(sec->GetFs());
 	if (IsComplex() || sec->IsComplex()) { SetComplex(); sec->SetComplex(); part.SetComplex();}
 
+	if (sec->GetType()==CSIG_AUDIO || GetType()!=CSIG_AUDIO) SwapContents1node(*sec); // now, there's no case where sec is audio and primary is nonaudio
+	if (GetType()!=CSIG_AUDIO) // if both are nonaudio
+	{
+		addmult(type, *sec);
+		return;
+	}
+	if (sec->GetType()!=CSIG_AUDIO) // primary audio, sec nonaudio
+	{
+		for (p=this; p; (p=p->chain) && (sec->nSamples>0) ) 
+		{
+			p->addmult(type, *sec);
+			sec->nSamples -= p->nSamples;
+			if (sec->nSamples>0)	sec->buf += sizeof(sec->buf)*p->nSamples;
+		}
+		return ;
+	}
+	//Now the rest is if both are audio...
 	vector<double> thistmark;
 	vector<double> sectmark;
 	for (p=this; p; p=p->chain)
@@ -1680,16 +1737,33 @@ vector<int> CSignal::MaxId()
 vector<double> CSignal::Max()
 {
 	vector<double> out ;
-	double localMax(-1.e100);
 	for (CSignal *p=this; p; p=p->chain)
-	{
-		for (int i=0; i<p->nSamples; i++)
-		{	if (buf[i] > localMax)
-				localMax = buf[i];
-		}
-		out.push_back(localMax);
-	}
+		out.push_back(((datachunk*)p)->Max());
 	return out;
+}
+
+CSignal& CSignal::Max(double crit)
+{
+	vector<double> out ;
+	for (CSignal *p=this; p; p=p->chain)
+		((datachunk*)p)->Max(crit);
+	return *this;
+}
+
+vector<double> CSignal::Min()
+{
+	vector<double> out ;
+	for (CSignal *p=this; p; p=p->chain)
+		out.push_back(((datachunk*)p)->Min());
+	return out;
+}
+
+CSignal& CSignal::Min(double crit)
+{
+	vector<double> out ;
+	for (CSignal *p=this; p; p=p->chain)
+		((datachunk*)p)->Min(crit);
+	return *this;
 }
 
 vector<int> CSignal::MinId()
@@ -1705,22 +1779,6 @@ vector<int> CSignal::MinId()
 				localMin = buf[i], id=i+1;  // one-based index
 		}
 		out.push_back(id);
-	}
-	return out;
-}
-
-vector<double> CSignal::Min()
-{
-	vector<double> out ;
-	double localMin(1.e100);
-	for (CSignal *p=this; p; p=p->chain)
-	{
-		for (int i=0; i<p->nSamples; i++)
-		{	
-			if (buf[i] < localMin)
-				localMin = buf[i];
-		}
-		out.push_back(localMin);
 	}
 	return out;
 }
@@ -2128,7 +2186,7 @@ double *CSignal::Blackman(int len, double alp)
 int CSignal::WriteAXL(FILE* fp)
 {
 	CSignal *p(this);
-	int res;
+	size_t res;
 	int nChains = CountChains();
 	res = fwrite((void*)&fs, sizeof(fs),1,fp);
 	res = fwrite((void*)&nChains, sizeof(nChains),1,fp);
