@@ -22,6 +22,13 @@
 
 #include <math.h> // ceil
 
+#ifndef CISIGPROC
+#include "psycon.tab.h"
+#else
+#include "cipsycon.tab.h"
+#endif
+
+
 #define CRIT  100. // Threshold for computing rms is above 100th of its max
 
 #define RETURN_0_MSG(str) {	strcpy(errstr, str);		return 0;	}
@@ -263,7 +270,8 @@ datachunk &datachunk::each(double (*fn)(double, double), datachunk &arg)
 	if (arg.nSamples==1) 
 	{
 		double val = arg.value();
-		for (int k=0; k<nSamples; k++)	buf[k] = fn(buf[k],val); 
+		for (int k=0; k<nSamples; k++)	
+			buf[k] = fn(buf[k],val); 
 	}
 	else if (nSamples==1) 
 	{
@@ -299,6 +307,49 @@ datachunk &datachunk::each(complex<double> (*fn)(complex<double>, complex<double
 	}
 	return *this;
 }
+
+double lt (double a, double b)
+{ return a<b;}
+double le (double a, double b)
+{ return a<=b;}
+double gt (double a, double b)
+{ return a>b;}
+double ge (double a, double b)
+{ return a>=b;}
+double eq (double a, double b)
+{ return a==b;}
+double ne (double a, double b)
+{ return a!=b;}
+
+
+EXP_CS datachunk& datachunk::OPERATE(datachunk &rhs, int type)
+{
+	double (*fn)(double, double);
+	switch(type)
+	{
+	case '<':
+		fn = lt;
+		break;
+	case '>':
+		fn = gt;
+		break;
+	case T_COMP_LE:
+		fn = le;
+		break;
+	case T_COMP_GE:
+		fn = ge;
+		break;
+	case T_COMP_EQ:
+		fn = eq;
+		break;
+	case T_COMP_NE:
+		fn = ne;
+		break;
+	}
+	each(fn, rhs);
+	return *this;
+}
+
 
 double datachunk::Sum()
 {
@@ -815,58 +866,58 @@ CSignal& CSignal::operator>>=(const double delta)
 	return *this;
 }
 
-EXP_CS CSignal& CSignal::operator<(const CSignal &sec)
-{
-	if (!IsScalar() || !sec.IsScalar())
-		throw "The operands of operator '<' must be scalars.";
-	SetValue(value() < sec.value());
-	return *this;
-}
-
-bool CSignal::operator==(const CSignal &sec) const
-{
-	if (IsScalar() && sec.IsScalar())
-		return (value() == sec.value());
-	else if (!IsScalar() && !sec.IsScalar()) {
-		if (nSamples != sec.nSamples || tmark != sec.tmark)
-			return false;
-		if (memcmp(buf, sec.buf, nSamples*sizeof(*buf)) == 0) {
-			if (chain || sec.chain) {
-				if (chain && sec.chain) {
-					if (*chain != *sec.chain)
-						return false;
-				} else
-					return false;
-			}
-			return true;
-		}
-	}
-	return false;
-}
-
-EXP_CS CSignal& CSignal::operator!()
-{
-	if (!IsScalar())
-		throw "The operand of operator '!' must be scalars.";
-	SetValue(!value());
-	return *this;
-}
-
-EXP_CS CSignal& CSignal::operator&&(const CSignal &sec)
-{
-	if (!IsScalar() || !sec.IsScalar())
-		throw "The operands of operator '&&' must be scalars.";
-	SetValue(value() && sec.value());
-	return *this;
-}
-
-EXP_CS CSignal& CSignal::operator||(const CSignal &sec)
-{
-	if (!IsScalar() || !sec.IsScalar())
-		throw "The operands of operator '!=' must be scalars.";
-	SetValue(value() || sec.value());
-	return *this;
-}
+//EXP_CS CSignal& CSignal::operator<(const CSignal &sec)
+//{
+//	if (!IsScalar() || !sec.IsScalar())
+//		throw "The operands of operator '<' must be scalars.";
+//	SetValue(value() < sec.value());
+//	return *this;
+//}
+//
+//bool CSignal::operator==(const CSignal &sec) const
+//{
+//	if (IsScalar() && sec.IsScalar())
+//		return (value() == sec.value());
+//	else if (!IsScalar() && !sec.IsScalar()) {
+//		if (nSamples != sec.nSamples || tmark != sec.tmark)
+//			return false;
+//		if (memcmp(buf, sec.buf, nSamples*sizeof(*buf)) == 0) {
+//			if (chain || sec.chain) {
+//				if (chain && sec.chain) {
+//					if (*chain != *sec.chain)
+//						return false;
+//				} else
+//					return false;
+//			}
+//			return true;
+//		}
+//	}
+//	return false;
+//}
+//
+//EXP_CS CSignal& CSignal::operator!()
+//{
+//	if (!IsScalar())
+//		throw "The operand of operator '!' must be scalars.";
+//	SetValue(!value());
+//	return *this;
+//}
+//
+//EXP_CS CSignal& CSignal::operator&&(const CSignal &sec)
+//{
+//	if (!IsScalar() || !sec.IsScalar())
+//		throw "The operands of operator '&&' must be scalars.";
+//	SetValue(value() && sec.value());
+//	return *this;
+//}
+//
+//EXP_CS CSignal& CSignal::operator||(const CSignal &sec)
+//{
+//	if (!IsScalar() || !sec.IsScalar())
+//		throw "The operands of operator '!=' must be scalars.";
+//	SetValue(value() || sec.value());
+//	return *this;
+//}
 
 EXP_CS void CSignal::AddChain(CSignal &sec)
 { // assume that nSamples>1 in both. 
@@ -1832,7 +1883,7 @@ EXP_CS double * CSignal::Resample(vector<int> newfs, vector<int> lengths, char *
 			return NULL;
 		}
 	}
-	nSamples = cumid2;
+	nSamples = (int)cumid2;
 	return buf;
 }
 
@@ -2051,9 +2102,9 @@ EXP_CS char *CSignal::getString(char *str, const int size)
 EXP_CS CSignal &CSignal::SetString(const char *str)
 {
 	Reset(2);
-	UpdateBuffer(strlen(str));
+	UpdateBuffer((int)strlen(str));
 	strcpy(strbuf, str);
-	nSamples = strlen(str);
+	nSamples = (int)strlen(str);
 	return *this;
 }
 
@@ -2196,7 +2247,7 @@ int CSignal::WriteAXL(FILE* fp)
 		res = fwrite((void*)&p->tmark, sizeof(tmark),1,fp);
 		res = fwrite((void*)p->buf, sizeof(double),p->nSamples,fp);
 	}
-	return res;
+	return (int)res;
 }
 
 EXP_CS CSignals::CSignals()
@@ -2515,43 +2566,44 @@ EXP_CS void CSignals::filtfilt(int nTabs, double *num, double *den)
 }
 
 
-EXP_CS CSignals& CSignals::OPERATE(const CSignals &rhs, std::string op)
-{
-	if (GetType() != CSIG_SCALAR || rhs.GetType() != CSIG_SCALAR)
-		throw  std::string("The operator ") + op + " requires scalars.";
-	if (op=="<")
-		SetValue(value() < rhs.value());
-	else if (op=="<=")
-		SetValue(value() <= rhs.value());
-	else if (op==">")
-		SetValue(value() > rhs.value());
-	else if (op==">=")
-		SetValue(value() >= rhs.value());
-	else if (op=="==")
-		SetValue(value() == rhs.value());
-	else if (op=="!=")
-		SetValue(value() != rhs.value());
-	else if (op=="!")
-		SetValue(!value());
-	return *this;
-}
+//EXP_CS CSignals& CSignals::OPERATE(const CSignals &rhs, std::string op)
+//{
+//	if (GetType() != CSIG_SCALAR || rhs.GetType() != CSIG_SCALAR)
+//		throw  std::string("The operator ") + op + " requires scalars.";
+//	if (op=="<")
+//		SetValue(value() < rhs.value());
+//	else if (op=="<=")
+//		SetValue(value() <= rhs.value());
+//	else if (op==">")
+//		SetValue(value() > rhs.value());
+//	else if (op==">=")
+//		SetValue(value() >= rhs.value());
+//	else if (op=="==")
+//		SetValue(value() == rhs.value());
+//	else if (op=="!=")
+//		SetValue(value() != rhs.value());
+//	else if (op=="!")
+//		SetValue(!value());
+//	return *this;
+//}
+//
+//EXP_CS bool CSignals::operator==(const CSignals &sec) const
+//{
+//	if (GetType() != sec.GetType()) return false;
+//	if (sec.GetType() != CSIG_CELL)		{
+//		if (!CSignal::operator==((CSignal)sec)) return false;		}
+//	if (GetType() == CSIG_AUDIO)
+//		return (next == sec.next);
+//	else // CELL
+//	{
+//		for (size_t k=0; k<cell.size(); k++) 
+//		{
+//			if (!(cell[k]==sec.cell[k])) return false;
+//		}
+//		return true;
+//	}
+//}
 
-EXP_CS bool CSignals::operator==(const CSignals &sec) const
-{
-	if (GetType() != sec.GetType()) return false;
-	if (sec.GetType() != CSIG_CELL)		{
-		if (!CSignal::operator==((CSignal)sec)) return false;		}
-	if (GetType() == CSIG_AUDIO)
-		return (next == sec.next);
-	else // CELL
-	{
-		for (size_t k=0; k<cell.size(); k++) 
-		{
-			if (!(cell[k]==sec.cell[k])) return false;
-		}
-		return true;
-	}
-}
 EXP_CS double CSignals::MakeChainless()
 {
 	CSignal::MakeChainless();
@@ -2925,8 +2977,8 @@ EXP_CS int CSignals::GetType() const
 
 EXP_CS int CSignals::ReadAXL(FILE* fp)
 {
-	int res,res2;
-	int nChains;
+	size_t res;
+	int res2, nChains;
 	res = fread((void*)&fs, sizeof(fs),1,fp);
 	res2 = ftell(fp);
 	Reset(fs);
@@ -2944,7 +2996,7 @@ EXP_CS int CSignals::ReadAXL(FILE* fp)
 		while(cum<readsig.nSamples)
 		{
 			res = fread((void*)&readsig.buf[cum], sizeof(double),readsig.nSamples-cum,fp);
-			cum += res;
+			cum += (int)res;
 		}
 		AddChain(readsig);
 		res2 = ftell(fp);

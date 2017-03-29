@@ -92,6 +92,16 @@ public:
 
 	datachunk &transpose1();
 
+	EXP_CS datachunk& OPERATE(datachunk &rhs, int type);
+
+	//EXP_CS datachunk& operator<(datachunk &sec) {	return OPERATE(sec, '<'); }
+	//EXP_CS datachunk& operator>(datachunk &sec) {	return OPERATE(sec, '>'); }
+	//EXP_CS datachunk& operator<=(datachunk &sec) {	return OPERATE(sec, "<="); }
+	//EXP_CS datachunk& operator>=(datachunk &sec) {	return OPERATE(sec, ">="); }
+	//EXP_CS datachunk& operator||(datachunk &sec) {	return OPERATE(sec, "||"); }
+	//EXP_CS datachunk& operator&&(datachunk &sec) {	return OPERATE(sec, "&&"); }
+//	EXP_CS datachunk& operator!() {	datachunk dummy(0); return OPERATE(dummy, "!"); }
+
 	EXP_CS double Sum();
 	EXP_CS double Min(int  &id);
 	EXP_CS double Min() {int id; return Min(id);}
@@ -172,15 +182,15 @@ public:
 	virtual CSignal& operator>>=(const double delta);
 	EXP_CS CSignal& operator<<=(const double delta);
 
-	EXP_CS CSignal& operator<(const CSignal &sec);
-	EXP_CS CSignal& operator>(const CSignal &sec);
-	EXP_CS CSignal& operator<=(const CSignal &sec);
-	EXP_CS CSignal& operator>=(const CSignal &sec);
-	bool operator==(const CSignal &sec) const;
-	bool operator!=(const CSignal &sec) const {return !(*this == sec);}
-	EXP_CS CSignal& operator!();
-	EXP_CS CSignal& operator&&(const CSignal &sec);
-	EXP_CS CSignal& operator||(const CSignal &sec);
+	//EXP_CS CSignal& operator<(const CSignal &sec);
+	//EXP_CS CSignal& operator>(const CSignal &sec);
+	//EXP_CS CSignal& operator<=(const CSignal &sec);
+	//EXP_CS CSignal& operator>=(const CSignal &sec);
+	//bool operator==(const CSignal &sec) const;
+	//bool operator!=(const CSignal &sec) const {return !(*this == sec);}
+	//EXP_CS CSignal& operator!();
+	//EXP_CS CSignal& operator&&(const CSignal &sec);
+	//EXP_CS CSignal& operator||(const CSignal &sec);
 
 	EXP_CS void SwapContents1node(CSignal &sec);
 	// Signal alteration (stereo handling with an established convention)
@@ -294,24 +304,24 @@ public:
 
 	EXP_CS double MakeChainless();
 
-	EXP_CS CSignals& OPERATE(const CSignals &sec, std::string op);
+	//EXP_CS CSignals& OPERATE(const CSignals &sec, std::string op);
 
-	EXP_CS CSignals& operator<(const CSignals &sec) {	return OPERATE(sec, "<"); }
-	EXP_CS CSignals& operator<(const CSignal &sec)  {	return OPERATE(CSignals(sec), "<"); }
-	EXP_CS CSignals& operator>(const CSignals &sec) {	return OPERATE(sec, ">"); }
-	EXP_CS CSignals& operator>(const CSignal &sec)  {	return OPERATE(CSignals(sec), ">"); }
-	EXP_CS CSignals& operator<=(const CSignals &sec) {	return OPERATE(sec, "<="); }
-	EXP_CS CSignals& operator<=(const CSignal &sec) {	return OPERATE(CSignals(sec), "<="); }
-	EXP_CS CSignals& operator>=(const CSignals &sec) {	return OPERATE(sec, ">="); }
-	EXP_CS CSignals& operator>=(const CSignal &sec) {	return OPERATE(CSignals(sec), ">="); }
-	EXP_CS CSignals& operator||(const CSignals &sec) {	return OPERATE(sec, "||"); }
-	EXP_CS CSignals& operator||(const CSignal &sec) {	return OPERATE(CSignals(sec), "||"); }
-	EXP_CS CSignals& operator&&(const CSignals &sec) {	return OPERATE(sec, "&&"); }
-	EXP_CS CSignals& operator&&(const CSignal &sec) {	return OPERATE(CSignals(sec), "&&"); }
-	EXP_CS CSignals& operator!() {	CSignals dummy(0); return OPERATE(dummy, "!"); }
+	//EXP_CS CSignals& operator<(const CSignals &sec) {	return OPERATE(sec, "<"); }
+	//EXP_CS CSignals& operator<(const CSignal &sec)  {	return OPERATE(CSignals(sec), "<"); }
+	//EXP_CS CSignals& operator>(const CSignals &sec) {	return OPERATE(sec, ">"); }
+	//EXP_CS CSignals& operator>(const CSignal &sec)  {	return OPERATE(CSignals(sec), ">"); }
+	//EXP_CS CSignals& operator<=(const CSignals &sec) {	return OPERATE(sec, "<="); }
+	//EXP_CS CSignals& operator<=(const CSignal &sec) {	return OPERATE(CSignals(sec), "<="); }
+	//EXP_CS CSignals& operator>=(const CSignals &sec) {	return OPERATE(sec, ">="); }
+	//EXP_CS CSignals& operator>=(const CSignal &sec) {	return OPERATE(CSignals(sec), ">="); }
+	//EXP_CS CSignals& operator||(const CSignals &sec) {	return OPERATE(sec, "||"); }
+	//EXP_CS CSignals& operator||(const CSignal &sec) {	return OPERATE(CSignals(sec), "||"); }
+	//EXP_CS CSignals& operator&&(const CSignals &sec) {	return OPERATE(sec, "&&"); }
+	//EXP_CS CSignals& operator&&(const CSignal &sec) {	return OPERATE(CSignals(sec), "&&"); }
+	//EXP_CS CSignals& operator!() {	CSignals dummy(0); return OPERATE(dummy, "!"); }
 
-	EXP_CS bool operator==(const CSignals &sec) const;
-	EXP_CS bool operator!=(const CSignals &sec) const {return !(*this == sec);}
+	//EXP_CS bool operator==(const CSignals &sec) const;
+	//EXP_CS bool operator!=(const CSignals &sec) const {return !(*this == sec);}
 
 	EXP_CS int ReadAXL(FILE* fp);
 	EXP_CS int WriteAXL(FILE* fp);

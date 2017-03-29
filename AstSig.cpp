@@ -274,7 +274,7 @@ CSignals &CAstSig::Compute(const AstNode *pnode)
 	Sig.bufBlockSize=1;
 	int count(0);
 	int mn, mx;
-	CSignals tsig, isig, *psig;
+	CSignals tsig, isig, *psig, lsig, rsig;
 	CSignals rms, rms2;
 	bool trinary(false);
 	if (!pnode)
@@ -436,51 +436,32 @@ try {
 		Sig.MergeChains();
 		break;
 	case '<':
-		tsig = Compute(p); 
-		blockCell(pnode,  Sig);
-		Sig =  tsig < Compute(p->next);
-		break;
 	case '>':
-		tsig = Compute(p); 
-		blockCell(pnode,  Sig);
-		Sig =  tsig > Compute(p->next);
-		break;
-	case T_COMP_EQ:
-		tsig = Compute(p);
-		blockCell(pnode,  Sig);
-		Sig.SetValue(tsig == Compute(p->next));
-		break;
-	case T_COMP_NE:
-		tsig = Compute(p);
-		blockCell(pnode,  Sig);
-		Sig.SetValue(tsig != Compute(p->next));
-		break;
 	case T_COMP_LE:
-		tsig = Compute(p);
-		blockCell(pnode,  Sig);
-		Sig = tsig <= Compute(p->next);
-		break;
 	case T_COMP_GE:
-		tsig = Compute(p);
+	case T_COMP_EQ:
+	case T_COMP_NE:
 		blockCell(pnode,  Sig);
-		Sig = tsig >= Compute(p->next);
+		rsig = Compute(p->next); 
+		Compute(p); 
+		Sig.OPERATE(rsig,pnode->type);
 		break;
 	case T_LOGIC_NOT:
-		blockCell(pnode,  Sig);
-		Sig = !Compute(p);
+		//blockCell(pnode,  Sig);
+		//Sig = !Compute(p);
 		break;
 	case T_LOGIC_AND:
-		tsig = Compute(p);
-		blockCell(pnode,  Sig);
-		Sig = tsig && Compute(p->next);
+		//tsig = Compute(p);
+		//blockCell(pnode,  Sig);
+		//Sig = tsig && Compute(p->next);
 		break;
 	case T_LOGIC_OR:
-		tsig = Compute(p);
-		blockCell(pnode,  Sig);
-		if (tsig.value())
-			Sig = tsig; // if the first operand is true, return true immediately, so the second op is not processed.
-		else
-			Compute(p->next);
+		//tsig = Compute(p);
+		//blockCell(pnode,  Sig);
+		//if (tsig.value())
+		//	Sig = tsig; // if the first operand is true, return true immediately, so the second op is not processed.
+		//else
+		//	Compute(p->next);
 		break;
 	case T_IF:
 		for (; p && p->next; p=p->next->next)	// p is a condition of 'if' or 'elseif', p->next is the code block.
@@ -491,17 +472,17 @@ try {
 			Compute(p);
 		break;
 	case T_SWITCH:
-		tsig = Compute(p);
-		for (p=p->next; p && p->next; p=p->next->next)	// p is a case exp, pcase->next is the code block.
-			if (p->type == NODE_ARGS) {
-				for (AstNode *pa=p->child; pa; pa=pa->next)
-					if (tsig == Compute(pa))
-						return Compute(p->next);	// no further processing of this 'switch' statement.
-			} else if (tsig == Compute(p))
-				return Compute(p->next);	// no further processing of this 'switch' statement.
-		// now p is at the end of 'case' list, without executing any conditional code.
-		if (p)	// if not null, it's the 'otherwise' code block
-			Compute(p);
+		//tsig = Compute(p);
+		//for (p=p->next; p && p->next; p=p->next->next)	// p is a case exp, pcase->next is the code block.
+		//	if (p->type == NODE_ARGS) {
+		//		for (AstNode *pa=p->child; pa; pa=pa->next)
+		//			if (tsig == Compute(pa))
+		//				return Compute(p->next);	// no further processing of this 'switch' statement.
+		//	} else if (tsig == Compute(p))
+		//		return Compute(p->next);	// no further processing of this 'switch' statement.
+		//// now p is at the end of 'case' list, without executing any conditional code.
+		//if (p)	// if not null, it's the 'otherwise' code block
+		//	Compute(p);
 		break;
 	case T_WHILE:
 		fExit=fBreak=false;
@@ -705,36 +686,55 @@ try {
 	case NODE_CALL: // built-in function calls come here
 		if (p && !p->next /* only one argument */ && (psig = RetrieveTag(pnode->str))) {
 			if (psig->GetType()==CSIG_CELL) throw CAstException(p, "A cell array cannot be accessed with ( ).");
-
-			pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
-			pAst_context->type = T_ID;
-			pAst_context->str = (char*)malloc(strlen(pnode->str)+1);
-
-			strcpy(pAst_context->str, pnode->str);
-			// Extraction by indices
-			isig = Compute(p);
-			yydeleteAstNode(pAst_context, 0);
-			pAst_context=NULL;
-
-			mn = round(((datachunk)isig).Min());
-			mx = round(((datachunk)isig).Max());
-			if (mn < 1)
-				throw CAstException(p, "Index cannot be smaller than 1.");
-			if (mx > psig->nSamples)
-				throw CAstException(p, "Index exceeds size of vector.");
-			Sig.UpdateBuffer(isig.nSamples);
-			if (psig->bufBlockSize==2) 
+			if (p->type!=NODE_CALL && p->LastChild) // This means conditional indexing
 			{
-				Sig.SetComplex();
-				for (int i=0; i<isig.nSamples; i++)
-					Sig.cbuf[i] = psig->cbuf[round(isig.buf[i])-1];	// -1 for one-based indexing
+				isig = Compute(p);
+				int *indexholder = new int[isig.nSamples];
+				//keep the indices with 'true' value
+				int id(0);
+				for (int k=0; k<isig.nSamples; k++)
+				{
+					if (isig.buf[k]>0) indexholder[id++]=k;
+				}
+				Sig.UpdateBuffer(id);
+				Sig.SetReal();
+				Sig.SetFs(psig->GetFs());
+				for (int k=0; k<id; k++)
+					Sig.buf[k] = psig->buf[indexholder[k]];	// -1 for one-based indexing
+				delete[] indexholder;
 			}
 			else
 			{
-				Sig.SetReal();
-				Sig.SetFs(psig->GetFs());
-				for (int i=0; i<isig.nSamples; i++)
-					Sig.buf[i] = psig->buf[round(isig.buf[i])-1];	// -1 for one-based indexing
+				pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
+				pAst_context->type = T_ID;
+				pAst_context->str = (char*)malloc(strlen(pnode->str)+1);
+
+				strcpy(pAst_context->str, pnode->str);
+				// Extraction by indices
+				isig = Compute(p);
+				yydeleteAstNode(pAst_context, 0);
+				pAst_context=NULL;
+
+				mn = round(((datachunk)isig).Min());
+				mx = round(((datachunk)isig).Max());
+				if (mn < 1)
+					throw CAstException(p, "Index cannot be smaller than 1.");
+				if (mx > psig->nSamples)
+					throw CAstException(p, "Index exceeds size of vector.");
+				Sig.UpdateBuffer(isig.nSamples);
+				if (psig->bufBlockSize==2) 
+				{
+					Sig.SetComplex();
+					for (int i=0; i<isig.nSamples; i++)
+						Sig.cbuf[i] = psig->cbuf[round(isig.buf[i])-1];	// -1 for one-based indexing
+				}
+				else
+				{
+					Sig.SetReal();
+					Sig.SetFs(psig->GetFs());
+					for (int i=0; i<isig.nSamples; i++)
+						Sig.buf[i] = psig->buf[round(isig.buf[i])-1];	// -1 for one-based indexing
+				}
 			}
 			break;
 		} else if (AstNode *pUDF=RetrieveUDF(pnode->str)) {

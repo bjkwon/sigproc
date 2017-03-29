@@ -337,16 +337,40 @@ case_list: /* empty */
 
 condition: exp '<' exp
 	{ $$ = makeBinaryOpNode('<', $1, $3, @$);}
+	| range '<' exp
+	{ $$ = makeBinaryOpNode('<', $1, $3, @$);}
+	| exp '<' range
+	{ $$ = makeBinaryOpNode('<', $1, $3, @$);}
 	| exp '>' exp
+	{ $$ = makeBinaryOpNode('>', $1, $3, @$);}
+	| range '>' exp
+	{ $$ = makeBinaryOpNode('>', $1, $3, @$);}
+	| exp '>' range
 	{ $$ = makeBinaryOpNode('>', $1, $3, @$);}
 	| exp T_COMP_EQ exp
 	{ $$ = makeBinaryOpNode(T_COMP_EQ, $1, $3, @$);}
+	| range T_COMP_EQ exp
+	{ $$ = makeBinaryOpNode(T_COMP_EQ, $1, $3, @$);}
+	| exp T_COMP_EQ range
+	{ $$ = makeBinaryOpNode(T_COMP_EQ, $1, $3, @$);}
 	| exp T_COMP_NE exp
 	{ $$ = makeBinaryOpNode(T_COMP_NE, $1, $3, @$);}
-	| exp T_COMP_LE exp
-	{ $$ = makeBinaryOpNode(T_COMP_LE, $1, $3, @$);}
+	| range T_COMP_NE exp
+	{ $$ = makeBinaryOpNode(T_COMP_NE, $1, $3, @$);}
+	| exp T_COMP_NE range
+	{ $$ = makeBinaryOpNode(T_COMP_NE, $1, $3, @$);}
 	| exp T_COMP_GE exp
 	{ $$ = makeBinaryOpNode(T_COMP_GE, $1, $3, @$);}
+	| range T_COMP_GE exp
+	{ $$ = makeBinaryOpNode(T_COMP_GE, $1, $3, @$);}
+	| exp T_COMP_GE range
+	{ $$ = makeBinaryOpNode(T_COMP_GE, $1, $3, @$);}
+	| exp T_COMP_LE exp
+	{ $$ = makeBinaryOpNode(T_COMP_LE, $1, $3, @$);}
+	| range T_COMP_LE exp
+	{ $$ = makeBinaryOpNode(T_COMP_LE, $1, $3, @$);}
+	| exp T_COMP_LE range
+	{ $$ = makeBinaryOpNode(T_COMP_LE, $1, $3, @$);}
 	| '(' condition ')'
 	{
 		$$ = $2;
@@ -463,6 +487,12 @@ exp_range: exp
 ;
 
 assign: T_ID '=' exp_range
+	{
+		$$ = newAstNode('=', @$);
+		$$->str = $1;
+		$$->child = $3;
+	}
+	| T_ID '=' condition
 	{
 		$$ = newAstNode('=', @$);
 		$$->str = $1;
@@ -659,7 +689,7 @@ exp: T_NUMBER
 		$$->str = $1;
 	}
 	| T_ID '(' ')'
-	{
+	{ // I don't know what this is doing.... bjk 3/28/2017 
 		$$ = newAstNode(NODE_CALL, @$);
  		$$->str = $1;
 	}
@@ -668,6 +698,15 @@ exp: T_NUMBER
 		$$ = $3;
 		$$->type = NODE_CALL;
  		$$->str = $1;
+		$$->line = @$.first_line;
+		$$->column = @$.first_column;
+	}
+	| T_ID '(' condition ')'
+	{
+		$$ = newAstNode(NODE_CALL, @$);
+ 		$$->str = $1;
+		$$->child = $3;
+		$$->LastChild = $3; // leaving a mark for conditional indexing 3/28/2017 bjk
 		$$->line = @$.first_line;
 		$$->column = @$.first_column;
 	}
