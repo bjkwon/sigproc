@@ -182,16 +182,6 @@ public:
 	virtual CSignal& operator>>=(const double delta);
 	EXP_CS CSignal& operator<<=(const double delta);
 
-	//EXP_CS CSignal& operator<(const CSignal &sec);
-	//EXP_CS CSignal& operator>(const CSignal &sec);
-	//EXP_CS CSignal& operator<=(const CSignal &sec);
-	//EXP_CS CSignal& operator>=(const CSignal &sec);
-	//bool operator==(const CSignal &sec) const;
-	//bool operator!=(const CSignal &sec) const {return !(*this == sec);}
-	//EXP_CS CSignal& operator!();
-	//EXP_CS CSignal& operator&&(const CSignal &sec);
-	//EXP_CS CSignal& operator||(const CSignal &sec);
-
 	EXP_CS void SwapContents1node(CSignal &sec);
 	// Signal alteration (stereo handling with an established convention)
 	virtual const CSignal& operator+=(CSignal *yy); // Concatenation
@@ -201,6 +191,8 @@ public:
 	EXP_CS CSignal& Take(CSignal& out, double begin_ms);
 	EXP_CS CSignal& Take(CSignal& out, int  id1, int  id2);
 	EXP_CS CSignal& Take(CSignal& out, double begin_ms, double end_ms);
+
+	EXP_CS CSignal& Squeeze();
 
 	virtual CSignal& Trim(double begin_ms, double end_ms);
 	virtual CSignal& timeshift(double tp_ms);

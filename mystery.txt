@@ -1,0 +1,26 @@
+In psycon.y
+
+| T_IF condition block elseif_list T_END
+{
+	$$ = $4;
+	$2->next = $3;
+	$3->next = $4->child;
+	$$->child = $2;
+	$$->line = @$.first_line;
+	$$->column = @$.first_column;
+}
+-> OK
+
+| T_IF condition block elseif_list T_END
+{
+	$$ = $4;
+	$$->child = $2;
+	$2->next = $3;
+	$3->next = $4->child;
+	$$->line = @$.first_line;
+	$$->column = @$.first_column;
+}
+-> NOT OK (crashes during yydeleteAstNode in SetNewScript).
+
+3/31/2017 bjkwon
+=============================================================

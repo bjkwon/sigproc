@@ -1390,6 +1390,14 @@ void aux_left_right(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	ast.Sig.next = NULL;
 };
 
+void aux_squeeze(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	const string fname = pnode->str;
+	const char *fnsigs[] = {"(remove the null interval)", 0};
+	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	ast.Sig.Squeeze();
+}
+
 void aux_audio(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
 	const string fname = pnode->str;
@@ -1636,6 +1644,7 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	else if (fname == "wavwrite")	aux_wavwrite(*this, pnode, p);
 #endif // NO_IIR
 	else if (fname == "audio")		aux_audio(*this, pnode, p); 
+	else if (fname == "squeeze")	aux_squeeze(*this, pnode, p); 
 	else if (fname == "interp")		aux_interp(*this, pnode, p); // Special kind... not an audio signal in a strict sense
 	else if (fname == "hann" ||
 			 fname == "hamming")	aux_hann_hamming(*this, pnode, p);

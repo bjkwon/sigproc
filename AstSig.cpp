@@ -265,6 +265,16 @@ CSignals &CAstSig::Eval(AstNode *pnode)
 	}
 }
 
+void AddConditionMeetingBlockAsChain(CSignals *Sig, CSignals *psig, int iBegin, int iNow, CSignal &part)
+{
+	part.UpdateBuffer(iNow-iBegin);
+	memcpy(part.buf, (void*)(psig->buf+iBegin), (iNow-iBegin)*sizeof(double));
+	part.tmark = 1.e3*iBegin/psig->GetFs();
+	if (Sig->nSamples==0)	*Sig = part;
+	else					Sig->AddChain(part);
+}
+
+
 //#define  T_NUMBER 284
 //#define  T_STRING 285
 //#define  T_ID 286
@@ -441,27 +451,17 @@ try {
 	case T_COMP_GE:
 	case T_COMP_EQ:
 	case T_COMP_NE:
+	case T_LOGIC_AND:
+	case T_LOGIC_OR:
 		blockCell(pnode,  Sig);
 		rsig = Compute(p->next); 
 		Compute(p); 
 		Sig.OPERATE(rsig,pnode->type);
 		break;
 	case T_LOGIC_NOT:
-		//blockCell(pnode,  Sig);
-		//Sig = !Compute(p);
-		break;
-	case T_LOGIC_AND:
-		//tsig = Compute(p);
-		//blockCell(pnode,  Sig);
-		//Sig = tsig && Compute(p->next);
-		break;
-	case T_LOGIC_OR:
-		//tsig = Compute(p);
-		//blockCell(pnode,  Sig);
-		//if (tsig.value())
-		//	Sig = tsig; // if the first operand is true, return true immediately, so the second op is not processed.
-		//else
-		//	Compute(p->next);
+		blockCell(pnode,  Sig);
+		Sig = Compute(p);
+		Sig.OPERATE(rsig,pnode->type); // rsig is a dummy for func signature.
 		break;
 	case T_IF:
 		for (; p && p->next; p=p->next->next)	// p is a condition of 'if' or 'elseif', p->next is the code block.
@@ -486,9 +486,12 @@ try {
 		break;
 	case T_WHILE:
 		fExit=fBreak=false;
+		{
+		double ss = Compute(p).value();
 		while (Compute(p).value() && !fExit && !fBreak)
 			Compute(p->next);
 		fBreak = false;
+		}
 		break;
 	case T_FOR:
 		fExit=fBreak=false;
@@ -689,19 +692,46 @@ try {
 			if (p->type!=NODE_CALL && p->LastChild) // This means conditional indexing
 			{
 				isig = Compute(p);
-				int *indexholder = new int[isig.nSamples];
-				//keep the indices with 'true' value
-				int id(0);
-				for (int k=0; k<isig.nSamples; k++)
+				Sig.Reset(psig->GetFs());
+				if (psig->GetType()==CSIG_AUDIO)
 				{
-					if (isig.buf[k]>0) indexholder[id++]=k;
+					bool prev = isig.buf[0]>0;
+					int k, id1(0);
+					CSignals part(psig->GetFs());
+					for (k=1; k<isig.nSamples; k++)
+					{
+						//First, find the continguous range that satisfy the condition
+						if (isig.buf[k]>0) 
+						{
+							if (!prev)	id1 = k;
+							prev = true;
+							if (k==isig.nSamples-1) // if the last point is true, the lask block should be taken.
+								AddConditionMeetingBlockAsChain(&Sig, psig, id1, k+1, part);
+						}
+						else
+						{
+							if (prev) //if previously true, but currently false, take this block since id1
+								AddConditionMeetingBlockAsChain(&Sig, psig, id1, k, part);
+							prev = false;
+						}
+					}
 				}
-				Sig.UpdateBuffer(id);
-				Sig.SetReal();
-				Sig.SetFs(psig->GetFs());
-				for (int k=0; k<id; k++)
-					Sig.buf[k] = psig->buf[indexholder[k]];	// -1 for one-based indexing
-				delete[] indexholder;
+				else
+				{
+					int *indexholder = new int[isig.nSamples];
+					//keep the indices with 'true' value
+					int id(0);
+					for (int k=0; k<isig.nSamples; k++)
+					{
+						if (isig.buf[k]>0) indexholder[id++]=k;
+					}
+					Sig.UpdateBuffer(id);
+					Sig.SetReal();
+					Sig.SetFs(psig->GetFs());
+					for (int k=0; k<id; k++)
+						Sig.buf[k] = psig->buf[indexholder[k]];	// -1 for one-based indexing
+					delete[] indexholder;
+				}
 			}
 			else
 			{

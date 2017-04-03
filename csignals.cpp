@@ -320,6 +320,13 @@ double eq (double a, double b)
 { return a==b;}
 double ne (double a, double b)
 { return a!=b;}
+double and (double a, double b)
+{ return a&&b;}
+double or (double a, double b)
+{ return a||b;}
+double not (double a)
+{ if (a==0) return 1.;
+else  return 0.;}
 
 
 EXP_CS datachunk& datachunk::OPERATE(datachunk &rhs, int type)
@@ -345,6 +352,15 @@ EXP_CS datachunk& datachunk::OPERATE(datachunk &rhs, int type)
 	case T_COMP_NE:
 		fn = ne;
 		break;
+	case T_LOGIC_AND:
+		fn = and;
+		break;
+	case T_LOGIC_OR:
+		fn = or;
+		break;
+	case T_LOGIC_NOT:
+		each(not);
+		return *this;
 	}
 	each(fn, rhs);
 	return *this;
@@ -541,8 +557,9 @@ EXP_CS CSignal& CSignal::operator+=(CSignal &sec)
 		}
 		else
 		{
-			for (int k=0; k<nSamples; k++)
-				buf[k] += sec.buf[0];
+			for (CSignal *p=this; p; p=p->chain)
+				for (int k=0; k<p->nSamples; k++)
+					p->buf[k] += sec.buf[0];
 		}
 	} else	/* now for two vectors */ 
 		AddMultChain( '+', &sec ); 
@@ -567,8 +584,9 @@ EXP_CS CSignal& CSignal::operator*=(CSignal &sec)
 		}
 		else
 		{
-			for (int k=0; k<nSamples; k++)
-				buf[k] *= sec.buf[0];
+			for (CSignal *p=this; p; p=p->chain)
+				for (int k=0; k<p->nSamples; k++)
+					p->buf[k] *= sec.buf[0];
 		}
 	} else	/* now for two vectors */ 
 		AddMultChain( '*', &sec ); 
@@ -1072,6 +1090,21 @@ EXP_CS CSignal& CSignal::Take(CSignal& out, double begin_ms, double end_ms)
 //	out.tfraction = (end_ms-begin_ms) - (id2-id1+1)/(double)fs*1000.;
 	return out;
 }
+
+EXP_CS CSignal& CSignal::Squeeze()
+{
+	int nSamplesTotal(0), nSamples0(nSamples);
+	for (CSignal* p(this); p; p=p->chain)
+		nSamplesTotal += p->nSamples;
+	UpdateBuffer(nSamplesTotal);
+	nSamplesTotal=nSamples0;
+	for (CSignal* p(chain); p; p=p->chain)
+		memcpy(&buf[nSamplesTotal], p->buf, p->nSamples*sizeof(p->buf[0])),nSamplesTotal+=p->nSamples;
+	delete chain;
+	chain = NULL;
+	return *this;
+}
+
 
 EXP_CS CSignal& CSignal::MergeChains()
 {// This tidy things up by removing unnecessary chains and rearranging them.

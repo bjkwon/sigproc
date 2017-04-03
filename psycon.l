@@ -83,7 +83,7 @@ NUM	[[:digit:]]+"."?[[:digit:]]*([eE][+-]?[[:digit:]]+)?|"."[[:digit:]]+
 	yy_pop_state();
 	return (unsigned char)yytext[0];
 	}
-if|else|elseif|end|while|for|break|continue|switch|case|otherwise|function|endfunction|return|sigma|"=="|"!="|"<="|">="|">>"|"<<"|"&&"|"||"|"++"|"+="|"-="|"*="|"/="|"@="|"@@=" {
+if|else|elseif|end|while|for|break|continue|switch|case|otherwise|function|endfunction|return|sigma|"=="|"!="|"<="|">="|">>"|"<<"|"&&"|"||"|"++"|"+="|"-="|"*="|"/="|"^="|"@="|"@@=" {
 	yylloc.last_column += yyleng;
 	return getTokenID(yytext);
 	}

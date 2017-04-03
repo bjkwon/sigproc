@@ -99,8 +99,9 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 AstNode *newAstNode(int type, YYLTYPE loc);
 AstNode *makeFunctionCall(char *name, AstNode *first, AstNode *second, YYLTYPE loc);
 AstNode *makeBinaryOpNode(int op, AstNode *first, AstNode *second, YYLTYPE loc);
-AstNode *makeCompoundOpNode(int op, char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2);
 AstNode *makeCompoundLevelOpNode(char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2);
+AstNode *makeCompoundOpNode(int op, char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2);
+AstNode *makeCompoundOpNodeFunctionCall(int op, char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2);
 AstNode *Restring(char *oper, char* dummy1, AstNode *dumm2, AstNode *dummy3, AstNode *dummy4, YYLTYPE loc);
 void print_token_value(FILE *file, int type, YYSTYPE value);
 %}
@@ -198,6 +199,15 @@ stmt: exp
 		$$->line = @$.first_line;
 		$$->column = @$.first_column;
 	}
+	| T_IF condition ',' block elseif_list T_END
+	{
+		$$ = $5;
+		$2->next = $4;
+		$4->next = $5->child;
+		$$->child = $2;
+		$$->line = @$.first_line;
+		$$->column = @$.first_column;
+	}
 	| T_IF condition block elseif_list T_ELSE block T_END
 	{
 		$$ = $4;
@@ -207,6 +217,63 @@ stmt: exp
 			$4->LastChild->next = $6;
 		} else
 			$3->next = $6;
+		$$->child = $2;
+		$$->line = @$.first_line;
+		$$->column = @$.first_column;
+	}
+	| T_IF condition ',' block elseif_list T_ELSE block T_END
+	{
+		$$ = $5;
+		$2->next = $4;
+		if ($5->LastChild) {
+			$4->next = $5->child;
+			$5->LastChild->next = $7;
+		} else
+			$4->next = $7;
+		$$->child = $2;
+		$$->line = @$.first_line;
+		$$->column = @$.first_column;
+	}
+	| T_IF exp block elseif_list T_END
+	{
+		$$ = $4;
+		$2->next = $3;
+		$3->next = $4->child;
+		$$->child = $2;
+		$$->line = @$.first_line;
+		$$->column = @$.first_column;
+	}
+	| T_IF exp ',' block elseif_list T_END
+	{
+		$$ = $5;
+		$2->next = $4;
+		$4->next = $5->child;
+		$$->child = $2;
+		$$->line = @$.first_line;
+		$$->column = @$.first_column;
+	}
+	| T_IF exp block elseif_list T_ELSE block T_END
+	{
+		$$ = $4;
+		$2->next = $3;
+		if ($4->LastChild) {
+			$3->next = $4->child;
+			$4->LastChild->next = $6;
+		} else
+			$3->next = $6;
+		$$->child = $2;
+		$$->line = @$.first_line;
+		$$->column = @$.first_column;
+	}
+	| T_IF exp ',' block elseif_list T_ELSE block T_END
+	{
+		$$ = $5;
+		$2->next = $4;
+		if ($5->LastChild) {
+			$4->next = $5->child;
+			$5->LastChild->next = $7;
+		} else
+			$4->next = $7;
 		$$->child = $2;
 		$$->line = @$.first_line;
 		$$->column = @$.first_column;
@@ -231,8 +298,26 @@ stmt: exp
 	| T_WHILE condition block T_END
 	{
 		$$ = newAstNode(T_WHILE, @$);
-		$$->child = $2;
 		$2->next = $3;
+		$$->child = $2;
+	}
+	| T_WHILE exp block T_END
+	{
+		$$ = newAstNode(T_WHILE, @$);
+		$2->next = $3;
+		$$->child = $2;
+	}
+	| T_WHILE condition ',' block T_END
+	{
+		$$ = newAstNode(T_WHILE, @$);
+		$2->next = $4;
+		$$->child = $2;
+	}
+	| T_WHILE exp ',' block T_END
+	{
+		$$ = newAstNode(T_WHILE, @$);
+		$2->next = $4;
+		$$->child = $2;
 	}
 	| T_FOR T_ID '=' exp_range block T_END
 	{
@@ -377,14 +462,18 @@ condition: exp '<' exp
 		$$->line = @$.first_line;
 		$$->column = @$.first_column;
 	}
-	| '~' condition %prec T_LOGIC_NOT
+	| '!' condition %prec T_LOGIC_NOT
 	{
 		$$ = newAstNode(T_LOGIC_NOT, @$);
 		$$->child = $2;
 	}
 	| condition T_LOGIC_AND condition
 	{ $$ = makeBinaryOpNode(T_LOGIC_AND, $1, $3, @$);}
+	| exp T_LOGIC_AND exp
+	{ $$ = makeBinaryOpNode(T_LOGIC_AND, $1, $3, @$);}
 	| condition T_LOGIC_OR condition
+	{ $$ = makeBinaryOpNode(T_LOGIC_OR, $1, $3, @$);}
+	| exp T_LOGIC_OR exp
 	{ $$ = makeBinaryOpNode(T_LOGIC_OR, $1, $3, @$);}
 ;
 
@@ -522,6 +611,12 @@ assign: T_ID '=' exp_range
 		$$->str = $1;
 		$$->child = makeCompoundOpNode('/', $1, $3, @3, @1);
 	}
+	| T_ID "^=" exp_range
+	{
+		$$ = newAstNode('=', @$);
+		$$->str = $1;
+		$$->child = makeCompoundOpNodeFunctionCall('^', $1, $3, @3, @1);
+	}
 	| T_ID "@=" exp_range
 	{
 		$$ = newAstNode('=', @$);
@@ -654,16 +749,12 @@ exp: T_NUMBER
 	| T_DUR
 	{
 		$$ = newAstNode(T_DUR, @$);
-	}
-	| T_DUR '(' exp ')'
-	{
-		$$ = newAstNode(NODE_CALL, @$);
- 		$$->str = $1;
-		$$ = newAstNode(T_DUR, @$);
+		$$->str = $1;
 	}
 	| T_LENGTH
 	{
 		$$ = newAstNode(T_LENGTH, @$);
+		$$->str = $1;
 	}
 	| T_ID
 	{
@@ -965,6 +1056,25 @@ AstNode *makeCompoundOpNode(int op, char *first, AstNode *second, YYLTYPE loc1, 
 	tempstrpt = (char*)malloc(strlen(first)+1); /* This will be cleaned up during yydeleteAstNode().*/
 	strcpy_s(tempstrpt, strlen(first)+1, first);
 	nn->child->str = tempstrpt;
+	nn->LastChild = nn->child->next = second;
+	return nn;
+}
+
+AstNode *makeCompoundOpNodeFunctionCall(int op, char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2)
+{
+	AstNode *nn;
+	char *tempstrpt, *tempstrpt2;
+	
+	nn = newAstNode(NODE_CALL, loc2);
+	tempstrpt = (char*)calloc(2,1); /* This will be cleaned up during yydeleteAstNode().*/ /* because this is for op which is a char*/
+	tempstrpt[0] = op;
+	nn->str = strdup(tempstrpt);
+	nn->LastChild = second;
+	
+	nn->child = newAstNode(T_ID, loc1);
+	tempstrpt2 = (char*)malloc(strlen(first)+1); /* This will be cleaned up during yydeleteAstNode().*/
+	strcpy_s(tempstrpt2, strlen(first)+1, first);
+	nn->child->str = tempstrpt2;
 	nn->LastChild = nn->child->next = second;
 	return nn;
 }
