@@ -348,7 +348,7 @@ int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname,
 	}
 	else if (propname=="children")
 	{
-		out.UpdateBuffer(hobj->child.size());
+		out.UpdateBuffer((int)hobj->child.size());
 		for (size_t k=0; k<hobj->child.size(); k++)
 			out.buf[k] = (double)(int)hobj->child[k];
 	}
@@ -490,7 +490,7 @@ int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname,
 		if (hobj->type=='f')
 		{
 			CFigure *cfig = static_cast<CFigure *>(hobj);
-			out.UpdateBuffer(cfig->ax.size());
+			out.UpdateBuffer((int)cfig->ax.size());
 			for (size_t k=0; k<cfig->ax.size(); k++)
 				out.buf[k] = (double)(int)cfig->ax[k];
 		}
@@ -502,7 +502,7 @@ int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname,
 		if (hobj->type=='f')
 		{
 			CFigure *cfig = static_cast<CFigure *>(hobj);
-			out.UpdateBuffer(cfig->text.size());
+			out.UpdateBuffer((int)cfig->text.size());
 			for (size_t k=0; k<cfig->text.size(); k++)
 				out.buf[k] = (double)(int)cfig->text[k];
 		}
@@ -514,7 +514,7 @@ int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname,
 		if (hobj->type=='a')
 		{
 			CAxis *pax = static_cast<CAxis *>(hobj);
-			out.UpdateBuffer(pax->m_ln.size());
+			out.UpdateBuffer((int)pax->m_ln.size());
 			for (size_t k=0; k<pax->m_ln.size(); k++)
 				out.buf[k] = (double)(int)pax->m_ln[k];
 		}

@@ -779,6 +779,13 @@ exp: T_NUMBER
 		$$ = newAstNode(NODE_INITCELL, @$);
 		$$->str = $1;
 	}
+	| T_ID '(' exp')'
+	{ 
+		$$ = newAstNode(NODE_INITCELL, @$);
+ 		$$->str = $1;
+		$$->child = $3;
+		
+	}
 	| T_ID '(' ')'
 	{ // I don't know what this is doing.... bjk 3/28/2017 
 		$$ = newAstNode(NODE_CALL, @$);
@@ -787,7 +794,7 @@ exp: T_NUMBER
 	| T_ID '(' arg_list ')'
 	{
 		$$ = $3;
-		$$->type = NODE_CALL;
+		$$->type = NODE_INITCELL;
  		$$->str = $1;
 		$$->line = @$.first_line;
 		$$->column = @$.first_column;

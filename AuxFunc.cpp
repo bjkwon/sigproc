@@ -200,6 +200,24 @@ double aux_mod(const double numer, const double denom)
 	return fmod(numer,denom);
 }
 
+void aux_diff(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	const char *fnsigs[] = {"(diff)", 0};
+	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	checkVector(pnode, ast.Sig);
+	ast.Compute(p); 
+	ast.Sig.Diff();
+}
+
+void aux_cumsum(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	const char *fnsigs[] = {"(diff)", 0};
+	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	checkVector(pnode, ast.Sig);
+	ast.Compute(p); 
+	ast.Sig.Cumsum();
+}
+
 void aux_minmax(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
 	const char *fnsigs[] = {"(minimum or maximum value)", 0};
@@ -217,8 +235,8 @@ void aux_minmax(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		bool loop(true);
 		while( (extracted = ast.Sig.ExtractDeepestChain(&dummy))!=&ast.Sig || loop )
 		{
-			if (fname == "max") out.buf[m++] = (double)((datachunk*)extracted)->Max();
-			else if (fname == "min") out.buf[m++] = (double)((datachunk*)extracted)->Min();
+			if (fname == "max") out.buf[m++] = (double)((body*)extracted)->Max();
+			else if (fname == "min") out.buf[m++] = (double)((body*)extracted)->Min();
 			if (extracted == &ast.Sig) loop = false;
 		}
 		out.ReverseTime();
@@ -1051,6 +1069,7 @@ void aux_fft(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	}
 	ast.Sig = prim;
 	ast.Sig.SetFs(1);
+	ast.Sig.UpdateBuffer(n); // is this a good idea to update the length here? 4/3/2017 bjk
 	ast.Sig.FFT(n);
 };
 
@@ -1218,8 +1237,8 @@ void aux_rms(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		ast.Compute(p);
 		checkAudioSig(pnode,  ast.Sig);
 		//I don't remember why I wrote it like this..... 5/28/2016 bjk
-//		int mn = (int)(((datachunk)ast.Sig).Min()+.5);
-//		int mx = (int)(((datachunk)ast.Sig).Max()+.5);
+//		int mn = (int)(((body)ast.Sig).Min()+.5);
+//		int mx = (int)(((body)ast.Sig).Max()+.5);
 //		if (mn==0. && mx==0.)
 //			ast.Sig.SetValue(-9999.99);
 //		else
@@ -1596,12 +1615,12 @@ void HandleExp1(const AstNode *pnode, CSignals &Sig)
 			if (fname == "begint") out.buf[m++] = extracted->tmark;
 			else if (fname == "endt") out.buf[m++] = extracted->tmark + extracted->dur();
 			else if (fname == "dur") out.buf[m++] = extracted->dur();
-			else if (fname == "max") out.buf[m++] = (double)((datachunk*)extracted)->Max();
-			else if (fname == "min") out.buf[m++] = (double)((datachunk*)extracted)->Min();
-			else if (fname == "mean") out.buf[m++] = (double)((datachunk*)extracted)->Mean();
-			else if (fname == "sum") out.buf[m++] = (double)((datachunk*)extracted)->Sum();
-			else if (fname == "maxid") {((datachunk*)extracted)->Max(res);  out.buf[m++] = (double)res;}
-			else if (fname == "minid") {((datachunk*)extracted)->Min(res);  out.buf[m++] = (double)res;}
+			else if (fname == "max") out.buf[m++] = (double)((body*)extracted)->Max();
+			else if (fname == "min") out.buf[m++] = (double)((body*)extracted)->Min();
+			else if (fname == "mean") out.buf[m++] = (double)((body*)extracted)->Mean();
+			else if (fname == "sum") out.buf[m++] = (double)((body*)extracted)->Sum();
+			else if (fname == "maxid") {((body*)extracted)->Max(res);  out.buf[m++] = (double)res;}
+			else if (fname == "minid") {((body*)extracted)->Min(res);  out.buf[m++] = (double)res;}
 			else if (fname == "length") {
 				if (Sig.cell.size()>0) out.buf[m++] = (double)Sig.cell.size();
 				else			out.buf[m++] = (double)extracted->nSamples;
@@ -1686,7 +1705,7 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	else if (fname == "exp")	if (Compute(p).GetType()==CSIG_COMPLEX)	cfn1=cmpexp; else fn1=exp;
 	else if (fname == "sqrt")	{ 
 		CSignals sg = Compute(p); 
-		if (sg.GetType()==CSIG_COMPLEX || ((datachunk)sg).Min()<0) 
+		if (sg.GetType()==CSIG_COMPLEX || ((body)sg).Min()<0) 
 			aux_csqrt(*this, pnode, p); 
 		else 
 			fn1 = sqrt;}
@@ -1707,6 +1726,8 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 			 fname == "minid" )
 			 HandleExp1(pnode, p?Compute(p):Sig);
 
+	else if (fname == "diff")		aux_diff(*this, pnode, p);
+	else if (fname == "cumsum")		aux_cumsum(*this, pnode, p);
 	else if (fname == "getfs")		aux_getfs(*this, pnode, p);
 	else if (fname == "rand")		aux_rand(*this, pnode, p);
 	else if (fname == "irand")		aux_irand(*this, pnode, p);
@@ -1787,7 +1808,7 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 		checkNumArgs(pnode, p, fnsigs, 1, 1);
 		Compute(p);
 		Sig.each(cfn0);	
-//		Sig.SetReal(); // SetReal should not be called here. Instead, it is taken care of by directly handling buf inside datachunk::each(double (*fn)(complex<double>)) 
+//		Sig.SetReal(); // SetReal should not be called here. Instead, it is taken care of by directly handling buf inside body::each(double (*fn)(complex<double>)) 
 	} 
 	else if (fn2)
 	{
@@ -1795,7 +1816,7 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 		checkNumArgs(pnode, p, fnsigs, 2, 2);
 		CSignals arg = Compute(p->next); // do not change the order of these two lines
 		Compute(p); //  to update Sig
-		if (fn2 == aux_exp && (Sig.IsComplex() || arg.IsComplex() || ((datachunk)Sig).Min()<0))  
+		if (fn2 == aux_exp && (Sig.IsComplex() || arg.IsComplex() || ((body)Sig).Min()<0))  
 		{	Sig.SetComplex(); arg.SetComplex(); cfn2 = aux_cexp; Sig.each(cfn2,arg); }
 		else
 			Sig.each(fn2,arg);

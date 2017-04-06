@@ -210,7 +210,7 @@ bool CAstSig::isInterrupted(void)
 CSignals &CAstSig::Compute(void)
 {
 	Sig.cell.clear();
-	Sig.bufBlockSize=1;
+//	Sig.bufBlockSize=1;
 	try {
 		if (!pAst)
 			return Sig;
@@ -274,6 +274,63 @@ void AddConditionMeetingBlockAsChain(CSignals *Sig, CSignals *psig, int iBegin, 
 	else					Sig->AddChain(part);
 }
 
+CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig)
+{
+	if (inout->GetType()== CSIG_AUDIO && sec.GetType()!=CSIG_AUDIO && sec.GetType()!=CSIG_EMPTY)
+		throw CAstException(pnode, "Referencing timepoint(s) in an audio variable requires another audio signal on the RHS.");
+
+	if (inout->GetType()!= CSIG_AUDIO && indsig.IsLogical())
+	{ // For non-audio, if isig is the result of logical operation, get the corresponding indices 
+		CSignals trueID(1);
+		trueID.UpdateBuffer(indsig.nSamples);
+		int m=0;
+		for (int k(0); k<indsig.nSamples; k++)
+			if (indsig.logbuf[k]) trueID.buf[m++]=k+1; // because aux is one-based index
+		trueID.UpdateBuffer(m);
+		indsig = trueID;
+	}
+
+	// p->next should be scalar, T_ID, or p:q (but no p:r:q)
+	if (indsig.IsScalar())
+	{
+		if (inout->GetType()==CSIG_AUDIO) 				// s(tp) = sound; //insert
+			inout->Insert(indsig.value(), sec);
+		else
+		{
+			if (sec.GetType()!=CSIG_SCALAR) throw CAstException(pnode, "RHS must be a scalar");
+			inout->insert(sec, (int)(indsig.value()+.5)-1);
+		}
+	}
+	else
+	{
+		AstNode *p = pnode->child; 
+//		if (pnode->type==NODE_INITCELL) p = pnode->next;
+		if (pnode->type==NODE_INITCELL || p->type == NODE_CALL)
+		{
+			if (p->type == NODE_CALL && p->next && p->next->child && !strcmp(p->next->child->str,":") ||
+				pnode->type == NODE_INITCELL &&  !strcmp(p->next->str,":") )
+			{ 
+				if (p->next->type != NODE_CALL && p->next->child->type != NODE_CALL) throw CAstException(pnode, "expecting ':'.");
+				if (inout->GetType()==CSIG_AUDIO)
+					inout->Replace(sec, indsig.buf[0]/inout->GetFs()*1000., indsig.buf[indsig.nSamples-1]/inout->GetFs()*1000.);
+				else
+					inout->replace(sec, (int)(indsig.buf[0]+.5)-1, (int)(indsig.buf[indsig.nSamples-1]+.5)-1);
+			}
+			else // p->next and p->next->next should be two time points
+			// inout->GetType() must be audio, filter out non-audio prior to this line
+			{ // s(tp1~tp2) = sound; replace between time points
+				inout->Replace(sec, indsig.buf[0], indsig.buf[1]);
+			}
+		}
+		else 
+		{
+			 throw CAstException(pnode, "Internal logic error (insertreplace) --unexpected node type.");
+		}
+	}
+	return *this;
+}
+
+
 
 //#define  T_NUMBER 284
 //#define  T_STRING 285
@@ -281,12 +338,12 @@ void AddConditionMeetingBlockAsChain(CSignals *Sig, CSignals *psig, int iBegin, 
 
 CSignals &CAstSig::Compute(const AstNode *pnode)
 {
-	Sig.bufBlockSize=1;
+//	Sig.bufBlockSize=1;
 	int count(0);
 	int mn, mx;
 	CSignals tsig, isig, *psig, lsig, rsig;
 	CSignals rms, rms2;
-	bool trinary(false);
+	bool check, trinary(false);
 	if (!pnode)
 		throw "Null AST node!";
 	if (GfInterrupted)
@@ -303,10 +360,10 @@ try {
 		break;
 	case T_ID:
 		if (p) {	// celled-CSignals object with an index. /* child is for cell array index */  
-			tsig = Compute(p);
-			if (!tsig.IsScalar())	throw CAstException(p, "Array index must be a scalar.");
-			int id = (int)tsig.value();
-			if ((double)id!=tsig.value()) throw CAstException(p, "Array index must be a positive integer.");
+			isig = Compute(p);
+			if (!isig.IsScalar())	throw CAstException(p, "Array index must be a scalar.");
+			int id = (int)(isig.value()+.5);
+			if (id<=0) throw CAstException(p, "Array index must be a positive integer.");
 			if (!(psig = RetrieveTag(pnode->str)))
 				throw CAstException(pnode, "Unknown array - ", pnode->str);
 			Sig = psig->cell.at(id-1); // because AUX is one-based
@@ -332,24 +389,35 @@ try {
 			SetTag(pnode->str, Compute(p));
 		}
 		break;
-	case NODE_INITCELL: // x={"bjk",noise(300), 4.5555}
+	case NODE_INITCELL: 
 		// always update with the new statement, discard what was in there previously.
-		for (; p;count++, p=p->next)
-			;
-		p = pnode->child;
-		if (!p) throw CAstException(pnode, "Empty cell definition.");
-		Sig.cell.reserve(count);
-		for (int i=0; p;i++, p=p->next)
-		{
-			AddCell(pnode->str, CAstSig(p).Compute(p));
+		if (!pnode->next)
+		{ // x={"bjk",noise(300), 4.5555}
+			for (; p;count++, p=p->next)
+				;
+			p = pnode->child;
+			if (!p) throw CAstException(pnode, "Empty cell definition.");
+			Sig.cell.reserve(count);
+			for (int i=0; p;i++, p=p->next)
+				AddCell(pnode->str, CAstSig(p).Compute(p));
+			if (pnode->str)
+				Sig.cell.clear(); // Sig needs to clear cell here, so anything following won't have lingering cells.
 		}
-		if (pnode->str)
-			Sig.cell.clear(); // Sig needs to clear cell here, so anything following won't have lingering cells.
+		else
+		{
+			tsig = Compute(pnode->next);
+			isig = Compute(p); 
+			int id = (int)(isig.value()+.5);
+			CSignal *cellsig = RetrieveCell(pnode->str, id);
+			isig = Compute(p->next); // p->next should be scalar, T_ID, or p:q (but no p:r:q)
+			insertreplace(pnode, cellsig, tsig, isig);
+			SetCell(pnode->str, id, *cellsig);
+		}
 		break;
 	case '+':
 		tsig = Compute(p);
 		blockCell(pnode,  Sig);
-		Compute(p->next);	// Sig gets the result.
+		Compute(p->next);
 		Sig += tsig;
 		break;
 	case '-':
@@ -456,12 +524,12 @@ try {
 		blockCell(pnode,  Sig);
 		rsig = Compute(p->next); 
 		Compute(p); 
-		Sig.OPERATE(rsig,pnode->type);
+		Sig.LogOp(rsig,pnode->type);
 		break;
 	case T_LOGIC_NOT:
 		blockCell(pnode,  Sig);
 		Sig = Compute(p);
-		Sig.OPERATE(rsig,pnode->type); // rsig is a dummy for func signature.
+		Sig.LogOp(rsig,pnode->type); // rsig is a dummy for func signature.
 		break;
 	case T_IF:
 		for (; p && p->next; p=p->next->next)	// p is a condition of 'if' or 'elseif', p->next is the code block.
@@ -590,15 +658,26 @@ try {
 		Sig.Trim(t[0], t[1]);
 		break;
 	case NODE_IXASSIGN:
+		/* if this is from T_ID '(' condition ')' '=' exp_range
+		p->next->child->next is non-zero --> if it should not be thrown by if (!p->next->child->next)
+		and isig should be from Compute(p->next), not Compute(p->next->child), to use isig below.
+		So, 
+	
+		*/
+		check = pnode->next!=NULL; // this is from T_ID '(' condition ')' '=' exp_range
 		if (!p)
 			throw CAstException(pnode, "Internal error: Empty assignment!");
 		if (p->next && p->next->next)
 			;// cell array indexed assignment
-		else if (!(p->next && p->next->child && !p->next->child->next))
+		else if (!check && !(p->next && p->next->child && !p->next->child->next))
 			throw CAstException(pnode, "Indexed assignment must have one argument.");
 		psig = RetrieveTag(pnode->str);
-		if (p->next->child) // insert
-			isig = Compute(p->next->child); // index (non-audio) or time point (audio)
+
+		if (p->next->child) // insert --- only for audio. For non-audio, this can be either insert or replace
+		{
+			if (check) isig = Compute(p->next);
+			else	isig = Compute(p->next->child); // index (non-audio) or time point (audio)
+		}
 		else	//replace
 		{
 			if (!p->next->next)
@@ -608,77 +687,40 @@ try {
 			isig += &Sig;
 		}
 		tsig = Compute(p); // rhs
-		if (!psig)
-		{
-			if (tsig.nSamples==0)		Sig = *psig;
-			else if (tsig.nSamples==1)	
-			{
-				if (isig.nSamples!=1) 
-					throw CAstException(pnode, "Referencing a non-existent variable is allowed only with a scalar or single char is on the RHS and with a single index on the LHS.");
-				char buf[64], buf2[16];
-				sprintf(buf, "%s=zeros(%d);%s(%d)=", pnode->str, isig.value(), pnode->str, isig.value());
-				string tempstr = (tsig.GetType()==CSIG_SCALAR) ? "%g)" : "%s)";
-				sprintf(buf2, tempstr.c_str(), tsig.value());
-				strcat(buf, tempstr.c_str());  strcat(buf, buf2); 
-				CAstSig temp(buf, tsig.GetFs());
-				temp.Compute();
-				Sig = temp.Sig;
-			}
-			else
-				throw CAstException(pnode, "Referencing a non-existent variable is allowed only when a scalar or single char is on the RHS.");
-		}
-		else if (psig->GetType()==CSIG_AUDIO)
-		{
-			if (tsig.GetType()!=CSIG_AUDIO && tsig.GetType()!=CSIG_EMPTY)
-				throw CAstException(pnode, "Referencing timepoint(s) in an audio variable requires another audio signal on the RHS.");
-			if (p->next->child) 
-				psig->Insert(isig.value(), tsig);
-			else
-				psig->Replace(tsig, isig.buf[0], isig.buf[1]);
-			Sig = *psig;
-		}
-		else if (psig->GetType()==CSIG_VECTOR || psig->GetType()==CSIG_CELL)
-		{
-			mn = round(((datachunk)isig).Min());
-			mx = round(((datachunk)isig).Max());
-			if (mn < 1)
-				throw CAstException(p->next->child, "Index cannot be smaller than 1.");
-			if (tsig.GetType()==CSIG_EMPTY)
-			{
-				if (isig.GetType()==CSIG_EMPTY) Sig=*psig;
-				else
-				{
-					Sig.UpdateBuffer(psig->nSamples);
-					int id = (int)(isig.buf[0]+.5);
-					memcpy(&Sig.buf[0], &psig->buf[0], (id-1)*sizeof(double));
-					int nextid = id-1;
-					int adv, k(1);
-					for (; k<isig.nSamples; k++)
-					{
-						adv = (id = (int)(isig.buf[k]+.5)) - (int)(isig.buf[k-1]+.5) - 1;
-						memcpy(&Sig.buf[nextid], &psig->buf[nextid+k], adv*sizeof(double));
-						nextid += adv;
-					}
-					adv = (id = psig->nSamples) - (int)(isig.buf[k-1]+.5);
-					memcpy(&Sig.buf[nextid], &psig->buf[nextid+k], adv*sizeof(double));
-					nextid += adv;
-					Sig.nSamples = nextid;
-					SetTag(pnode->str, Sig);
-				}
-			}
-			else
-			{
-				if (isig.nSamples != tsig.nSamples)
-					throw CAstException(pnode, "Number of indices and number of elements on right side must be the same.");
-				while (!(psig = RetrieveTag(pnode->str)))
-					SetTag(pnode->str, CSignals(pEnv->Fs));
-				if (int maxIndex=mx)
-					if (maxIndex > psig->nSamples)
-						psig->UpdateBuffer(maxIndex);
-				for (int i=0; i<isig.nSamples; i++)
-					psig->buf[round(isig.buf[i])-1] = tsig.buf[i];
-			}
-		}
+
+		insertreplace(pnode, psig, tsig, isig);
+		Sig = *psig;
+
+
+		//if (psig->GetType()==CSIG_VECTOR || psig->GetType()==CSIG_CELL)
+		//{
+
+		//	mn = (int)(isig.buf[0]+.5);
+		//	if (mn < 1)	throw CAstException(p->next->child, "Index cannot be smaller than 1.");
+		//	mx = (int)(isig.buf[isig.nSamples-1]+.5);
+		//	if (mx < mn)	throw CAstException(p->next->child, "Index cannot be decreasing.");
+		//	// if tsig.nSamples > 1 or tsig.nSamples == 0 the new array loses elements from mn-th to mx-th (edge inclusive) and gains tsig.nSamples
+		//	// if tsig.nSamples == 1, no change in length in the array
+		//	int newlen(psig->nSamples);
+		//	if ( tsig.nSamples>1) 
+		//		newlen -= (mx-mn+1), newlen += tsig.nSamples;
+		//	else if (tsig.nSamples==0) 
+		//		newlen -= (mx-mn+1);
+		//	Sig.UpdateBuffer(newlen);
+		//	memcpy(&Sig.buf[0], psig->buf, (mn-1)*sizeof(double));
+		//	if (tsig.nSamples>1) 
+		//	{
+		//		memcpy(&Sig.buf[mn-1], tsig.buf, tsig.nSamples*sizeof(double));
+		//		memcpy(&Sig.buf[mn-1+tsig.nSamples], &psig->buf[mx], (psig->nSamples-mx)*sizeof(double));
+		//	}
+		//	else if (tsig.nSamples==1) 
+		//	{
+		//		int k = mn-1;
+		//		for (; k<mx; k++) Sig.buf[k] = tsig.value();
+		//		memcpy(&Sig.buf[k], &psig->buf[mx], (psig->nSamples-mx)*sizeof(double));
+		//	}
+		//	SetTag(pnode->str, Sig);
+		//}
 		break;
 #ifndef CISIGPROC
 	case T_LENGTH:
@@ -689,19 +731,19 @@ try {
 	case NODE_CALL: // built-in function calls come here
 		if (p && !p->next /* only one argument */ && (psig = RetrieveTag(pnode->str))) {
 			if (psig->GetType()==CSIG_CELL) throw CAstException(p, "A cell array cannot be accessed with ( ).");
-			if (p->type!=NODE_CALL && p->LastChild) // This means conditional indexing
+			isig = Compute(p);
+			if (isig.IsLogical()) // This means conditional indexing
 			{
-				isig = Compute(p);
 				Sig.Reset(psig->GetFs());
 				if (psig->GetType()==CSIG_AUDIO)
 				{
-					bool prev = isig.buf[0]>0;
+					bool prev = isig.logbuf[0];
 					int k, id1(0);
 					CSignals part(psig->GetFs());
 					for (k=1; k<isig.nSamples; k++)
 					{
 						//First, find the continguous range that satisfy the condition
-						if (isig.buf[k]>0) 
+						if (isig.logbuf[k]) 
 						{
 							if (!prev)	id1 = k;
 							prev = true;
@@ -742,11 +784,11 @@ try {
 				strcpy(pAst_context->str, pnode->str);
 				// Extraction by indices
 				isig = Compute(p);
-				yydeleteAstNode(pAst_context, 0);
-				pAst_context=NULL;
+				//yydeleteAstNode(pAst_context, 0);
+				//pAst_context=NULL;
 
-				mn = round(((datachunk)isig).Min());
-				mx = round(((datachunk)isig).Max());
+				mn = round(((body)isig).Min());
+				mx = round(((body)isig).Max());
 				if (mn < 1)
 					throw CAstException(p, "Index cannot be smaller than 1.");
 				if (mx > psig->nSamples)
@@ -1014,6 +1056,14 @@ CSignals *CAstSig::RetrieveTag(const char *tagname)
 	return NULL;
 }
 
+CSignal *CAstSig::RetrieveCell(const char *cellvar, int id)
+{ // one-based index
+	if (!cellvar) return NULL;
+	CSignals *psig = RetrieveTag(cellvar);	// Find and retrive a variable
+	if (!psig) return NULL;
+	if (psig->cell.size()<id) return NULL;
+	return &(psig->cell[id-1]);
+}
 
 CAstSig &CAstSig::SetTag(const char *name, const CSignals &sig)
 {
@@ -1056,9 +1106,9 @@ CAstSig &CAstSig::AddCell(const char *name, const CSignals &sig)
 	return *this;
 }
 
-CAstSig &CAstSig::SetCell(const char *name, const unsigned int i, const CSignals &sig)
+CAstSig &CAstSig::SetCell(const char *name, const unsigned int i, const CSignal &sig)
 {
-	CSignals tp(sig);
+	CSignal tp(sig);
 	CSignals *psig = RetrieveTag(name);	// Find and retrive a variable
 	if (psig!=NULL) Sig = *psig;
 	else 
