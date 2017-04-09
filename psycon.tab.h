@@ -73,7 +73,8 @@
      T_LENGTH = 288,
      T_NEGATIVE = 289,
      T_POSITIVE = 290,
-     T_LOGIC_NOT = 291
+     T_LOGIC_NOT = 291,
+     T_REPLICA = 292
    };
 #endif
 
@@ -93,7 +94,7 @@ typedef union YYSTYPE
 
 
 /* Line 1676 of yacc.c  */
-#line 97 "psycon.tab.h"
+#line 98 "psycon.tab.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */

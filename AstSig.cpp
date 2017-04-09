@@ -274,18 +274,54 @@ void AddConditionMeetingBlockAsChain(CSignals *Sig, CSignals *psig, int iBegin, 
 	else					Sig->AddChain(part);
 }
 
+bool CAstSig::isContiguous(body &ind, int &begin, int &end)
+{
+	bool contig(true);
+	int id, id0 = (int)(ind.buf[0]+.5);
+	int diff = (int)(ind.buf[1]+.5) - id0;
+	for (int k=1; k<ind.nSamples && contig; k++)
+	{
+		id = (int)(ind.buf[k]+.5);
+		if (id-id0 != diff || diff!=1 && diff!=-1)
+			contig = false;
+		id0 = id;
+	}
+	if (contig)
+	{
+		if (diff>0) begin = (int)(ind.buf[0]+.5), end = (int)(ind.buf[ind.nSamples-1]+.5);
+		else	end = (int)(ind.buf[0]+.5), begin = (int)(ind.buf[ind.nSamples-1]+.5);
+	}
+	return contig;
+}
+
+CSignals &CAstSig::extract(CSignals &in, body &isig)
+{
+	CSignals out(in.GetFs());
+	out.UpdateBuffer(isig.nSamples);
+	int id;
+	for (int k=0; k<isig.nSamples; k++)
+	{
+		id = (int)(isig.buf[k]+.5);
+		if (id<0) throw "index cannot be negative.";
+		out.buf[k]=in.buf[id];
+	}
+	return (Sig=out);
+}
+
 CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig)
 {
-	if (inout->GetType()== CSIG_AUDIO && sec.GetType()!=CSIG_AUDIO && sec.GetType()!=CSIG_EMPTY)
+	if (!indsig.IsLogical() && inout->GetType()== CSIG_AUDIO && sec.GetType()!=CSIG_AUDIO && sec.GetType()!=CSIG_EMPTY)
 		throw CAstException(pnode, "Referencing timepoint(s) in an audio variable requires another audio signal on the RHS.");
-
+	bool logicalindex = indsig.IsLogical();
+	AstNode *p = pnode->next; 
 	if (inout->GetType()!= CSIG_AUDIO && indsig.IsLogical())
 	{ // For non-audio, if isig is the result of logical operation, get the corresponding indices 
 		CSignals trueID(1);
 		trueID.UpdateBuffer(indsig.nSamples);
 		int m=0;
 		for (int k(0); k<indsig.nSamples; k++)
-			if (indsig.logbuf[k]) trueID.buf[m++]=k+1; // because aux is one-based index
+			if (indsig.logbuf[k]) 
+				trueID.buf[m++]=k; // because aux is one-based index
 		trueID.UpdateBuffer(m);
 		indsig = trueID;
 	}
@@ -298,34 +334,56 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 		else
 		{
 			if (sec.GetType()!=CSIG_SCALAR) throw CAstException(pnode, "RHS must be a scalar");
-			inout->insert(sec, (int)(indsig.value()+.5)-1);
+			inout->buf[(int)(indsig.value()+.5)-1] = sec.value();
 		}
 	}
 	else
 	{
-		AstNode *p = pnode->child; 
-//		if (pnode->type==NODE_INITCELL) p = pnode->next;
-		if (pnode->type==NODE_INITCELL || p->type == NODE_CALL)
+		if (pnode->type==NODE_IXASSIGN || pnode->type==NODE_INITCELL )
 		{
-			if (p->type == NODE_CALL && p->next && p->next->child && !strcmp(p->next->child->str,":") ||
-				pnode->type == NODE_INITCELL &&  !strcmp(p->next->str,":") )
-			{ 
-				if (p->next->type != NODE_CALL && p->next->child->type != NODE_CALL) throw CAstException(pnode, "expecting ':'.");
-				if (inout->GetType()==CSIG_AUDIO)
-					inout->Replace(sec, indsig.buf[0]/inout->GetFs()*1000., indsig.buf[indsig.nSamples-1]/inout->GetFs()*1000.);
-				else
-					inout->replace(sec, (int)(indsig.buf[0]+.5)-1, (int)(indsig.buf[indsig.nSamples-1]+.5)-1);
+			int id1, id2;
+			if (inout->GetType()==CSIG_AUDIO) 
+			{
+				if (!p->next && !p->str) // if s(conditional) is on the LHS, the RHS must be either a scalar, or the replica, i.e., s(conditional)
+				{
+					if (!indsig.IsLogical()) throw CAstException(pnode, "Internal logic error (insertreplace:0)--s(conditional?).");
+					if (sec.IsScalar()) 
+					{
+						double val = sec.value();
+						for (int k=0; k<indsig.nSamples; k++)
+							if (indsig.logbuf[k]) inout->buf[k] = val;
+					}
+					else
+					{ // RHS must be the replica .. do this later ... 4/9/2017
+
+					}
+				}
+				else if (p->type==NODE_IDLIST || (p->next && p->next->type==NODE_IDLIST) )
+			               // s(tp1~tp2)   or  cel{n}(tp1~tp2)
+					inout->Replace(sec, indsig.buf[0], indsig.buf[1]);
+				else if (p->type==NODE_ARGS || (p->next && p->next->type==NODE_CALL) )// s(id1:id2) or cel{n}(id1:id2)
+				{
+					// this must be contiguous
+					if (!isContiguous(indsig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
+					inout->Replace(sec, 1000.*(id1-1)/inout->GetFs(), 1000.*(id2-1)/inout->GetFs());
+				}
+				else 
+					 throw CAstException(pnode, "Internal logic error (insertreplace:1) --unexpected node type.");
 			}
-			else // p->next and p->next->next should be two time points
-			// inout->GetType() must be audio, filter out non-audio prior to this line
-			{ // s(tp1~tp2) = sound; replace between time points
-				inout->Replace(sec, indsig.buf[0], indsig.buf[1]);
+			else
+			{
+				// v(1:5) or v([contiguous]) = (any array) to replace
+				// v(1:2:5) or v([non-contiguous]) = RHS; //LHS and RHS must match length.
+				bool contig = isContiguous(indsig, id1, id2);
+				if (!contig && sec.nSamples!=1 && sec.nSamples!=indsig.nSamples) throw "the number of replaced items must be the same as that of replacing items."; 
+				if (contig)
+					inout->replace(sec, id1-1, id2-1);
+				else 
+					inout->replace(sec, indsig);
 			}
 		}
 		else 
-		{
-			 throw CAstException(pnode, "Internal logic error (insertreplace) --unexpected node type.");
-		}
+			 throw CAstException(pnode, "Internal logic error (insertreplace:2) --unexpected node type.");
 	}
 	return *this;
 }
@@ -366,7 +424,14 @@ try {
 			if (id<=0) throw CAstException(p, "Array index must be a positive integer.");
 			if (!(psig = RetrieveTag(pnode->str)))
 				throw CAstException(pnode, "Unknown array - ", pnode->str);
-			Sig = psig->cell.at(id-1); // because AUX is one-based
+			tsig = psig->cell.at(id-1); // because AUX is one-based
+			if (p->next) // x{n}(id1:step:id2)  or x{n}(index_array)
+			{
+				isig = Compute(p->next);
+				Sig = extract(tsig,isig);
+			}
+			else
+				Sig = tsig;
 //			Sig.cell.clear(); // if it is a single extraction, any trailing cells should be removed. // ==>This is probably not necessary 4/23/2016 bjk 
 		} else { // a celled-CSignals object without an index or an CSignals object with an extractor operator
 			if (!(psig = RetrieveTag(pnode->str)))
@@ -375,19 +440,8 @@ try {
 		}
 		break;
 	case '=':
-		if (!p)
-			throw CAstException(pnode, "Internal error: Empty assignment!");
-		if (p->next) {	/* another child means cell array index */
-			isig = Compute(p->next);
-			if (!isig.IsScalar())
-				throw CAstException(p->next, "Array index must be a scalar.");
-			SetCell(pnode->str, round(isig.value()), Compute(p));
-		} else
-		{
-			if (p->next && p->next->type==NODE_VECTOR) 
-			{}
-			SetTag(pnode->str, Compute(p));
-		}
+		if (!p)	throw CAstException(pnode, "Internal error: Empty assignment!");
+		SetTag(pnode->str, Compute(p));
 		break;
 	case NODE_INITCELL: 
 		// always update with the new statement, discard what was in there previously.
@@ -399,19 +453,28 @@ try {
 			if (!p) throw CAstException(pnode, "Empty cell definition.");
 			Sig.cell.reserve(count);
 			for (int i=0; p;i++, p=p->next)
-				AddCell(pnode->str, CAstSig(p).Compute(p));
+				AddCell(pnode->str, Compute(p));
 			if (pnode->str)
 				Sig.cell.clear(); // Sig needs to clear cell here, so anything following won't have lingering cells.
 		}
 		else
 		{
-			tsig = Compute(pnode->next);
-			isig = Compute(p); 
+			isig = Compute(pnode->next);
+			tsig = Compute(p); 
+			if (!isig.IsScalar())	throw CAstException(p->next, "Cell index must be a scalar.");
 			int id = (int)(isig.value()+.5);
-			CSignal *cellsig = RetrieveCell(pnode->str, id);
-			isig = Compute(p->next); // p->next should be scalar, T_ID, or p:q (but no p:r:q)
-			insertreplace(pnode, cellsig, tsig, isig);
-			SetCell(pnode->str, id, *cellsig);
+			
+			if (pnode->next->next)
+			{
+				CSignal *cellsig = RetrieveCell(pnode->str, id);
+				isig = Compute(pnode->next->next); // should be scalar, T_ID, or p:q (but no p:r:q)
+				// if cell{n}(tp1~tp2), pnode->next->next->type is NODE_IDLIST
+				// if cell{n}(id1:id2), pnode->next->next->type is NODE_CALL 
+				insertreplace(pnode, cellsig, tsig, isig);
+				SetCell(pnode->str, id, *cellsig);
+			}
+			else
+				SetCell(pnode->str, id, tsig);
 		}
 		break;
 	case '+':
@@ -524,11 +587,17 @@ try {
 		blockCell(pnode,  Sig);
 		rsig = Compute(p->next); 
 		Compute(p); 
+		if ( (pnode->type==T_LOGIC_AND || pnode->type==T_LOGIC_OR) && (!Sig.IsLogical() || !rsig.IsLogical()) ) 
+			throw "Logical operation is only for logical arrays.";
 		Sig.LogOp(rsig,pnode->type);
 		break;
 	case T_LOGIC_NOT:
 		blockCell(pnode,  Sig);
+		rsig.Reset();
+		rsig.MakeLogical();
 		Sig = Compute(p);
+		if ( !Sig.IsLogical() || !rsig.IsLogical() )
+			throw "Logical operation is only for logical arrays.";
 		Sig.LogOp(rsig,pnode->type); // rsig is a dummy for func signature.
 		break;
 	case T_IF:
@@ -657,70 +726,36 @@ try {
 		checkAudioSig(pnode,  Sig);
 		Sig.Trim(t[0], t[1]);
 		break;
+
+	case NODE_IDLIST:
+		// used in x(tp1~tp2) only
+		tsig = Compute(pnode->child);
+		Compute(pnode->LastChild);
+		Sig += &tsig;
+		break;
+
 	case NODE_IXASSIGN:
-		/* if this is from T_ID '(' condition ')' '=' exp_range
-		p->next->child->next is non-zero --> if it should not be thrown by if (!p->next->child->next)
-		and isig should be from Compute(p->next), not Compute(p->next->child), to use isig below.
-		So, 
-	
-		*/
+		// when part of variable (i.e., range of index) is on the LHS, 
+		// i.e., x(n)=(something), x(m:n)=(something), or x(t1~t2)=(something)
+		psig = RetrieveTag(pnode->str);
+		if (!psig) throw CAstException(pnode, "variable not available.");
 		check = pnode->next!=NULL; // this is from T_ID '(' condition ')' '=' exp_range
+		if (pnode->next->type==NODE_ARGS) // x(5) = something
+			isig = Compute(pnode->next->child);
+		else 
+			isig = Compute(pnode->next);
 		if (!p)
 			throw CAstException(pnode, "Internal error: Empty assignment!");
 		if (p->next && p->next->next)
 			;// cell array indexed assignment
 		else if (!check && !(p->next && p->next->child && !p->next->child->next))
 			throw CAstException(pnode, "Indexed assignment must have one argument.");
-		psig = RetrieveTag(pnode->str);
-
-		if (p->next->child) // insert --- only for audio. For non-audio, this can be either insert or replace
-		{
-			if (check) isig = Compute(p->next);
-			else	isig = Compute(p->next->child); // index (non-audio) or time point (audio)
-		}
-		else	//replace
-		{
-			if (!p->next->next)
-				throw CAstException(pnode, "Time-range assignment must have two arguments.");
-			isig = Compute(p->next); 
-			Compute(p->next->next); 
-			isig += &Sig;
-		}
 		tsig = Compute(p); // rhs
-
+		//if x(tp1~tp2), pnode->next->type is NODE_IDLIST
+		//if x(id1:id2), pnode->next->type is NODE_ARGS
+		//if x(conditional),  pnode->next->type is conditional op and pnode->next-next is NULL
 		insertreplace(pnode, psig, tsig, isig);
 		Sig = *psig;
-
-
-		//if (psig->GetType()==CSIG_VECTOR || psig->GetType()==CSIG_CELL)
-		//{
-
-		//	mn = (int)(isig.buf[0]+.5);
-		//	if (mn < 1)	throw CAstException(p->next->child, "Index cannot be smaller than 1.");
-		//	mx = (int)(isig.buf[isig.nSamples-1]+.5);
-		//	if (mx < mn)	throw CAstException(p->next->child, "Index cannot be decreasing.");
-		//	// if tsig.nSamples > 1 or tsig.nSamples == 0 the new array loses elements from mn-th to mx-th (edge inclusive) and gains tsig.nSamples
-		//	// if tsig.nSamples == 1, no change in length in the array
-		//	int newlen(psig->nSamples);
-		//	if ( tsig.nSamples>1) 
-		//		newlen -= (mx-mn+1), newlen += tsig.nSamples;
-		//	else if (tsig.nSamples==0) 
-		//		newlen -= (mx-mn+1);
-		//	Sig.UpdateBuffer(newlen);
-		//	memcpy(&Sig.buf[0], psig->buf, (mn-1)*sizeof(double));
-		//	if (tsig.nSamples>1) 
-		//	{
-		//		memcpy(&Sig.buf[mn-1], tsig.buf, tsig.nSamples*sizeof(double));
-		//		memcpy(&Sig.buf[mn-1+tsig.nSamples], &psig->buf[mx], (psig->nSamples-mx)*sizeof(double));
-		//	}
-		//	else if (tsig.nSamples==1) 
-		//	{
-		//		int k = mn-1;
-		//		for (; k<mx; k++) Sig.buf[k] = tsig.value();
-		//		memcpy(&Sig.buf[k], &psig->buf[mx], (psig->nSamples-mx)*sizeof(double));
-		//	}
-		//	SetTag(pnode->str, Sig);
-		//}
 		break;
 #ifndef CISIGPROC
 	case T_LENGTH:
@@ -765,7 +800,7 @@ try {
 					int id(0);
 					for (int k=0; k<isig.nSamples; k++)
 					{
-						if (isig.buf[k]>0) indexholder[id++]=k;
+						if (isig.logbuf[k]) indexholder[id++]=k;
 					}
 					Sig.UpdateBuffer(id);
 					Sig.SetReal();

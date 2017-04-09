@@ -103,6 +103,7 @@ public:
 	EXP_CS body& LogOp(body &rhs, int type);
 	body &insert(body &sec, int id);
 	body &replace(body &sec, int id1, int id2);
+	body &replace(body &sec, body &index);
 
 	EXP_CS double Sum();
 	EXP_CS double Min(int  &id);
@@ -418,6 +419,8 @@ private:
 	map<int,CSignals> *RetrieveArray(const char *arrayname);
 	AstNode *RetrieveUDF(const char *fname);
 	CAstSig &insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig);
+	bool isContiguous(body &id, int &begin, int &end);
+	CSignals &extract(CSignals &Sig, body &isig);
 public:
 	CSignals Sig;
 	string statusMsg;
@@ -434,7 +437,7 @@ public:
 	EXP_CS CAstSig(AstNode *pNode, const CAstSig *env);
 	EXP_CS CAstSig(const int fs = DefaultFs);
 	EXP_CS CAstSig(const char *str, const int fs = DefaultFs);
-	EXP_CS CAstSig(AstNode *pNode, const int fs = DefaultFs);
+	EXP_CS CAstSig(AstNode *pNode, const int fs);
 	EXP_CS ~CAstSig();
 
 	EXP_CS CAstSig &SetNewScript(const char *str, AstNode *pAstOut = NULL);

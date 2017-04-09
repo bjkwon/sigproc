@@ -53,7 +53,9 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 %token T_LOGIC_OR	"||"
 
 %token <dval> T_NUMBER "number"
-%token <str> T_STRING "string"	T_ID "identifier" T_DUR	"fT" T_LENGTH	"fP"
+%token <str> T_STRING "string"	T_ID "identifier" 
+%token T_DUR		"fT"
+%token T_LENGTH		"fP"
 %type <pnode> block block_func line line_func stmt funcdef elseif_list condition case_list id_list arg arg_list vector matrix range exp_range assign exp initcell
 
 %right '='
@@ -67,6 +69,8 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 %left '*' '/'
 %right '^' /* exponentiation */
 %left T_LOGIC_NOT T_POSITIVE T_NEGATIVE /* unary plus/minus */
+
+%token T_REPLICA	".."
 
 %parse-param {AstNode **pproot}
 %parse-param {char **errmsg}
@@ -467,6 +471,11 @@ condition: exp '<' exp
 		$$ = newAstNode(T_LOGIC_NOT, @$);
 		$$->child = $2;
 	}
+	| '!' exp %prec T_LOGIC_NOT
+	{
+		$$ = newAstNode(T_LOGIC_NOT, @$);
+		$$->child = $2;
+	}
 	| condition T_LOGIC_AND condition
 	{ $$ = makeBinaryOpNode(T_LOGIC_AND, $1, $3, @$);}
 	| exp T_LOGIC_AND exp
@@ -632,18 +641,10 @@ assign: T_ID '=' exp_range
 	}
 	| T_ID '{' exp '}' '=' exp_range
 	{
-		$$ = newAstNode('=', @$);
+		$$ = newAstNode(NODE_INITCELL, @$);
 		$$->str = $1;
 		$$->child = $6;
-		$6->next = $3;
-	}
-	| T_ID '(' exp '~' exp ')' '=' exp
-	{
-		$$ = newAstNode(NODE_IXASSIGN, @$);
-		$$->str = $1;
-		$$->child = $8;
-		$8->next = $3;
-		$3->next = $5;
+		$$->next = $3;
 	}
 	| T_ID '(' exp '~' exp ')' "+=" exp_range
 	{
@@ -669,20 +670,55 @@ assign: T_ID '=' exp_range
 	{
 		$$ = Restring("@@=", $1, $3, $5, $8, @$);
 	}
-	| T_ID '(' arg_list ')' '=' exp_range
-	{
+	| T_ID '(' arg_list ')' '=' exp_range 
+	{ /* x(45)=723 or x(id1:id2) = id1:id2  or x(array) = scalar */
 		$$ = newAstNode(NODE_IXASSIGN, @$);
 		$$->str = $1;
 		$$->child = $6;
-		$6->next = $3;
+		$$->next = $3;
 	}
-	| T_ID '{' exp '}' '(' exp ')' '=' exp_range
+	| T_ID '(' condition ')' '=' exp_range
+	{ /* x(x>0) = scalar */
+		$$ = newAstNode(NODE_IXASSIGN, @$);
+		$$->str = $1;
+		$$->child = $6;
+		$$->next = $3;
+	}
+	| T_ID '(' exp '~' exp ')' '=' exp
 	{
 		$$ = newAstNode(NODE_IXASSIGN, @$);
 		$$->str = $1;
+		$$->child = $8;
+		$$->next = newAstNode(NODE_IDLIST, @$);
+		$$->next->child = $5;
+		$$->next->LastChild = $3;
+	}
+	| T_ID '{' exp '}' '(' exp '~' exp ')' '=' exp
+	{//Probably this will work. 4/8/2017 Just check AstSig.cpp
+		$$ = newAstNode(NODE_INITCELL, @$);
+		$$->str = $1;
+		$$->child = $11;
+		$$->next = $3;
+		$3->next = newAstNode(NODE_IDLIST, @$);
+		$3->next->child = $8;
+		$3->next->LastChild = $6;
+	}
+	//T_ID '{' exp '}' '(' arg_list ')' '=' exp_range  -->  does not work 4/8/2017 bjk
+	| T_ID '{' exp '}' '(' exp ')' '=' exp_range
+	{ // v{2}(4)=1 
+		$$ = newAstNode(NODE_INITCELL, @$);
+		$$->str = $1;
 		$$->child = $9;
-		$9->next = $6;
-		$6->next = $3;
+		$$->next = $3;
+		$3->next = $6;
+	}	
+	| T_ID '{' exp '}' '(' exp_range ')' '=' exp_range
+	{ // v{2}(4:6)=1 
+		$$ = newAstNode(NODE_INITCELL, @$);
+		$$->str = $1;
+		$$->child = $9;
+		$$->next = $3;
+		$3->next = $6;
 	}
 	| T_ID '=' assign
 	{
@@ -712,8 +748,8 @@ assign: T_ID '=' exp_range
 		$9->next = $6;
 		$6->next = $3;
 	}
-	| T_ID '=' initcell
-	{
+	| T_ID '=' initcell 
+	{ // x={"bjk",noise(300), 4.5555}
 		$$ = $3;
 		$$->str = $1;
 		$$->line = @$.first_line;
@@ -749,12 +785,12 @@ exp: T_NUMBER
 	| T_DUR
 	{
 		$$ = newAstNode(T_DUR, @$);
-		$$->str = $1;
+		$$->str = NULL;
 	}
 	| T_LENGTH
 	{
 		$$ = newAstNode(T_LENGTH, @$);
-		$$->str = $1;
+		$$->str = NULL;
 	}
 	| T_ID
 	{
@@ -774,17 +810,18 @@ exp: T_NUMBER
 		$$->child = $3;
 		$3->next = $6;
 	}
+	| T_ID '{' exp '}' '(' exp_range ')'
+	{
+		$$ = newAstNode(T_ID, @$);
+		$$->str = $1;
+		$$->child = $3;
+		$3->next = $6;
+		$$->line = 232;
+	}
 	| T_ID '{' '}'
 	{
 		$$ = newAstNode(NODE_INITCELL, @$);
 		$$->str = $1;
-	}
-	| T_ID '(' exp')'
-	{ 
-		$$ = newAstNode(NODE_INITCELL, @$);
- 		$$->str = $1;
-		$$->child = $3;
-		
 	}
 	| T_ID '(' ')'
 	{ // I don't know what this is doing.... bjk 3/28/2017 
@@ -794,7 +831,7 @@ exp: T_NUMBER
 	| T_ID '(' arg_list ')'
 	{
 		$$ = $3;
-		$$->type = NODE_INITCELL;
+		$$->type = NODE_CALL;
  		$$->str = $1;
 		$$->line = @$.first_line;
 		$$->column = @$.first_column;
@@ -901,6 +938,11 @@ exp: T_NUMBER
 		$$ = $2;
 		$$->line = @$.first_line;
 		$$->column = @$.first_column;
+	}
+	| T_REPLICA
+	{
+		$$ = newAstNode(T_REPLICA, @$);
+		$$->str = NULL;
 	}
 ;
 

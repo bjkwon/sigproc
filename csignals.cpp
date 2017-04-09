@@ -483,22 +483,42 @@ body &body::insert(body &sec, int id)
 	return *this;
 }
 
+body &body::replace(body &sec, body &index)
+{
+//	this is to be used when items are replaced without changing the size.
+	if (sec.bufBlockSize!=bufBlockSize) throw "replace must be between the same data structure."; 
+	for (int k=0; k<index.nSamples; k++)
+	{
+		int id = (int)(index.buf[k]+.5)-1;
+		if (id<0) throw "replace index cannot be negative."; 
+		if (sec.nSamples==1) // items from id1 to id2 are to be replaced with sec.value()
+			buf[id] = sec.value();
+		else
+			buf[id] = sec.buf[k];
+	}
+	return *this;
+}
+
 body &body::replace(body &sec, int id1, int id2)
 { // this replaces the data body between id1 and id2 (including edges) with sec
 	if (id1<0||id2<0) throw "replace index cannot be negative."; 
-	if (id2<id1) throw "replace index2 cannot be less than index1."; 
 	if (sec.bufBlockSize!=bufBlockSize) throw "replace must be between the same data structure."; 
-	int nAdd = sec.nSamples;
-	int nSubtr = id2-id1+1;
-	int newLen = nSamples + nAdd - nSubtr;
-	int nToMove = nSamples - id2 - 1;
-	if (nAdd>nSubtr) UpdateBuffer(newLen);
-	bool *temp = new bool[nToMove*bufBlockSize];
-	memcpy(temp, logbuf+(id2+1)*bufBlockSize, nToMove*bufBlockSize);
-	memcpy(logbuf+id1*bufBlockSize, sec.buf, sec.nSamples*bufBlockSize);
-	memcpy(logbuf+(id1+sec.nSamples)*bufBlockSize, temp, nToMove*bufBlockSize);
-	delete[] temp;
-	nSamples = newLen;
+	if (sec.nSamples==1) // no change in length--items from id1 to id2 are to be replaced with sec.value()
+		for (int k=id1; k<=id2; k++) buf[k] = sec.value();
+	else
+	{
+		int nAdd = sec.nSamples;
+		int nSubtr = id2-id1+1;
+		int newLen = nSamples + nAdd - nSubtr;
+		int nToMove = nSamples - id2 - 1;
+		if (nAdd>nSubtr) UpdateBuffer(newLen);
+		bool *temp = new bool[nToMove*bufBlockSize];
+		memcpy(temp, logbuf+(id2+1)*bufBlockSize, nToMove*bufBlockSize);
+		memcpy(logbuf+id1*bufBlockSize, sec.buf, sec.nSamples*bufBlockSize);
+		memcpy(logbuf+(id1+sec.nSamples)*bufBlockSize, temp, nToMove*bufBlockSize);
+		delete[] temp;
+		nSamples = newLen;
+	}
 	return *this;
 }
 
@@ -1670,7 +1690,7 @@ EXP_CS CSignal& CSignal::Replace(CSignal &newsig, double t1, double t2)
 	CSignal copy(*this);
 	double samplegrid = 1./fs;
 	double deviationfromgrid = t1-((double)(int)(t1*fs))/fs;
-	if (deviationfromgrid>-samplegrid && deviationfromgrid < samplegrid)
+	if (t1>0. && deviationfromgrid>-samplegrid && deviationfromgrid < samplegrid)
 		t1 -= 1000.*samplegrid;  // because its in ms
 	Trim(0, t1);
 	//if t2 coincides with the sampling grid, don't take that point here (it will be taken twice)
