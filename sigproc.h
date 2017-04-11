@@ -411,16 +411,19 @@ private:
 	AstNode *pAst;
 	AstNode *pAst_context;
 	string Script;
+	CSignals replica;
 	bool fAllocatedAst, fExit, fBreak, fContinue;
 
-	EXP_CS void initGlobals(const CAstSig *env);
-	EXP_CS void HandleAuxFunctions(const AstNode *pnode);
+	void initGlobals(const CAstSig *env);
+	void HandleAuxFunctions(const AstNode *pnode);
 	CSignals &CallSub(const AstNode *pUDF, const AstNode *pCall);
 	map<int,CSignals> *RetrieveArray(const char *arrayname);
 	AstNode *RetrieveUDF(const char *fname);
+	CSignals &getlhs(const AstNode *pnode, CSignal *tagsig, CSignals &isig);
 	CAstSig &insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig);
 	bool isContiguous(body &id, int &begin, int &end);
-	CSignals &extract(CSignals &Sig, body &isig);
+	bool isReplica(AstNode *pnode);
+	CSignals &extract(CSignal &Sig, body &isig);
 public:
 	CSignals Sig;
 	string statusMsg;

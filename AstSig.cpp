@@ -274,8 +274,19 @@ void AddConditionMeetingBlockAsChain(CSignals *Sig, CSignals *psig, int iBegin, 
 	else					Sig->AddChain(part);
 }
 
-bool CAstSig::isContiguous(body &ind, int &begin, int &end)
+bool CAstSig::isReplica(AstNode *pnode)
 {
+	AstNode *p = pnode->child;
+	for (; p; p=p->next)
+	{
+		if (p->type==T_REPLICA)
+			return true;
+	}
+	return false;
+}
+
+bool CAstSig::isContiguous(body &ind, int &begin, int &end)
+{ // in out out
 	bool contig(true);
 	int id, id0 = (int)(ind.buf[0]+.5);
 	int diff = (int)(ind.buf[1]+.5) - id0;
@@ -294,16 +305,64 @@ bool CAstSig::isContiguous(body &ind, int &begin, int &end)
 	return contig;
 }
 
-CSignals &CAstSig::extract(CSignals &in, body &isig)
+
+CSignals &CAstSig::extract(CSignal &in, body &isig)
 {
-	CSignals out(in.GetFs());
+	CSignal out(in.GetFs());
 	out.UpdateBuffer(isig.nSamples);
 	int id;
 	for (int k=0; k<isig.nSamples; k++)
 	{
 		id = (int)(isig.buf[k]+.5);
 		if (id<0) throw "index cannot be negative.";
-		out.buf[k]=in.buf[id];
+		out.buf[k]=in.buf[id-1];
+	}
+	return (Sig=out);
+}
+
+CSignals &CAstSig::getlhs(const AstNode *pnode, CSignal *tagsig, CSignals &isig)
+{
+	CSignals out(tagsig->GetFs());
+	AstNode *p = pnode->next; 
+	if (isig.IsScalar())
+	{
+		out.SetValue(tagsig->buf[(int)(isig.value()+.5)-1]);
+	}
+	else
+	{
+		if (pnode->type==NODE_EXTRACT)
+			tagsig->Take(out, isig.buf[0], isig.buf[1]);
+		else if (pnode->type==NODE_IXASSIGN || pnode->type==NODE_INITCELL )
+		{
+			int id1, id2;
+			if (tagsig->GetType()==CSIG_AUDIO) 
+			{
+				bool ch = isReplica(pnode->child);
+				if (p->type==NODE_IDLIST || (p->next && p->next->type==NODE_IDLIST) )
+			               // s(tp1~tp2)   or  cel{n}(tp1~tp2)
+					tagsig->Take(out, isig.buf[0], isig.buf[1]);
+				else if (p->type==NODE_ARGS || (p->next && p->next->type==NODE_CALL) )// s(id1:id2) or cel{n}(id1:id2)
+				{
+					// this must be contiguous
+					if (!isContiguous(isig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
+					tagsig->Take(out, id1, id2);
+				}
+				else if (!p->next && !p->str) // if s(conditional) is on the LHS, the RHS must be either a scalar, or the replica, i.e., s(conditional)
+				{
+			// conditional... to be done...4/11/2017
+				}
+				else 
+					 throw CAstException(pnode, "Internal logic error (insertreplace:1) --unexpected node type.");
+			}
+			else
+			{
+				// v(1:5) or v([contiguous]) = (any array) to replace
+				// v(1:2:5) or v([non-contiguous]) = RHS; //LHS and RHS must match length.
+				return extract(*tagsig, isig);
+			}
+		}
+		else 
+			 throw CAstException(pnode, "Internal logic error (insertreplace:2) --unexpected node type.");
 	}
 	return (Sig=out);
 }
@@ -344,9 +403,19 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 			int id1, id2;
 			if (inout->GetType()==CSIG_AUDIO) 
 			{
-				if (!p->next && !p->str) // if s(conditional) is on the LHS, the RHS must be either a scalar, or the replica, i.e., s(conditional)
+				bool ch = isReplica(pnode->child);
+				if (p->type==NODE_IDLIST || (p->next && p->next->type==NODE_IDLIST) )
+			               // s(tp1~tp2)   or  cel{n}(tp1~tp2)
+					inout->Replace(sec, indsig.buf[0], indsig.buf[1]);
+				else if (p->type==NODE_ARGS || (p->next && p->next->type==NODE_CALL) )// s(id1:id2) or cel{n}(id1:id2)
 				{
-					if (!indsig.IsLogical()) throw CAstException(pnode, "Internal logic error (insertreplace:0)--s(conditional?).");
+					// this must be contiguous
+					if (!isContiguous(indsig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
+					inout->Replace(sec, 1000.*(id1-1)/inout->GetFs(), 1000.*(id2-1)/inout->GetFs());
+				}
+				else if (!p->next && !p->str) // if s(conditional) is on the LHS, the RHS must be either a scalar, or the replica, i.e., s(conditional)
+				{
+					if (!ch && !indsig.IsLogical()) throw CAstException(pnode, "Internal logic error (insertreplace:0)--s(conditional?).");
 					if (sec.IsScalar()) 
 					{
 						double val = sec.value();
@@ -357,15 +426,6 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 					{ // RHS must be the replica .. do this later ... 4/9/2017
 
 					}
-				}
-				else if (p->type==NODE_IDLIST || (p->next && p->next->type==NODE_IDLIST) )
-			               // s(tp1~tp2)   or  cel{n}(tp1~tp2)
-					inout->Replace(sec, indsig.buf[0], indsig.buf[1]);
-				else if (p->type==NODE_ARGS || (p->next && p->next->type==NODE_CALL) )// s(id1:id2) or cel{n}(id1:id2)
-				{
-					// this must be contiguous
-					if (!isContiguous(indsig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
-					inout->Replace(sec, 1000.*(id1-1)/inout->GetFs(), 1000.*(id2-1)/inout->GetFs());
 				}
 				else 
 					 throw CAstException(pnode, "Internal logic error (insertreplace:1) --unexpected node type.");
@@ -439,8 +499,19 @@ try {
 			Sig = *psig;
 		}
 		break;
+	case T_REPLICA:
+		Sig = replica;
+		break;
 	case '=':
 		if (!p)	throw CAstException(pnode, "Internal error: Empty assignment!");
+		// if there's a 292 node (REPLICA) down in p, do something (here, NODE_INITCELL and NODE_IXASSIGN)
+		if (isReplica(p))
+		{
+			if ((psig = RetrieveTag(pnode->str)))
+				replica = *psig;
+			else
+				throw CAstException(p, "LHS variable not available to replicate on the RHS.");
+		}
 		SetTag(pnode->str, Compute(p));
 		break;
 	case NODE_INITCELL: 
@@ -460,21 +531,28 @@ try {
 		else
 		{
 			isig = Compute(pnode->next);
-			tsig = Compute(p); 
 			if (!isig.IsScalar())	throw CAstException(p->next, "Cell index must be a scalar.");
 			int id = (int)(isig.value()+.5);
 			
 			if (pnode->next->next)
 			{
 				CSignal *cellsig = RetrieveCell(pnode->str, id);
+				if (!cellsig) throw CAstException(pnode, "Cell variable with specified index not available.");
 				isig = Compute(pnode->next->next); // should be scalar, T_ID, or p:q (but no p:r:q)
 				// if cell{n}(tp1~tp2), pnode->next->next->type is NODE_IDLIST
 				// if cell{n}(id1:id2), pnode->next->next->type is NODE_CALL 
+				if (isReplica(p))
+					replica = getlhs(pnode, cellsig, isig);
+				//rhs compute should be done after replica is ready
+				tsig = Compute(p); 
 				insertreplace(pnode, cellsig, tsig, isig);
 				SetCell(pnode->str, id, *cellsig);
 			}
 			else
+			{
+				tsig = Compute(p); 
 				SetCell(pnode->str, id, tsig);
+			}
 		}
 		break;
 	case '+':
@@ -708,23 +786,32 @@ try {
 		break;
 #endif //CISIGPROC
 	case NODE_EXTRACT:
-		double t[2];
-		pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
-		pAst_context->type = T_ID;
-		pAst_context->str = (char*)malloc(strlen(pnode->child->str)+1);
-		strcpy(pAst_context->str, pnode->child->str);
-		p = p->next;
-		for (int k(0); k<2; k++, p=p->next) {
-			Sig = Compute(p);
-				if (!Sig.IsScalar())
-					throw CAstException(p, "The arguments of extraction must be scalars.");
-			t[k] = Sig.value();
-		}
-		yydeleteAstNode(pAst_context, 0);
-		pAst_context=NULL;
-		Compute(pnode->child);
-		checkAudioSig(pnode,  Sig);
-		Sig.Trim(t[0], t[1]);
+		psig = RetrieveTag(p->str);
+		if (!psig) throw CAstException(pnode, "variable not available.");
+		isig = Compute(p->next);
+		isig += &Compute(p->next->next);
+		Sig = getlhs(pnode, psig, isig);
+
+
+
+
+		//double t[2];
+		//pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
+		//pAst_context->type = T_ID;
+		//pAst_context->str = (char*)malloc(strlen(pnode->child->str)+1);
+		//strcpy(pAst_context->str, pnode->child->str);
+		//p = p->next;
+		//for (int k(0); k<2; k++, p=p->next) {
+		//	Sig = Compute(p);
+		//		if (!Sig.IsScalar())
+		//			throw CAstException(p, "The arguments of extraction must be scalars.");
+		//	t[k] = Sig.value();
+		//}
+		//yydeleteAstNode(pAst_context, 0);
+		//pAst_context=NULL;
+		//Compute(pnode->child);
+		//checkAudioSig(pnode,  Sig);
+		//Sig.Trim(t[0], t[1]);
 		break;
 
 	case NODE_IDLIST:
@@ -750,9 +837,14 @@ try {
 			;// cell array indexed assignment
 		else if (!check && !(p->next && p->next->child && !p->next->child->next))
 			throw CAstException(pnode, "Indexed assignment must have one argument.");
+
+		if (isReplica(p))
+			replica = getlhs(pnode, psig, isig);
+		//rhs compute should be done after replica is ready
 		tsig = Compute(p); // rhs
 		//if x(tp1~tp2), pnode->next->type is NODE_IDLIST
 		//if x(id1:id2), pnode->next->type is NODE_ARGS
+		//if x(var),	pnode->next->type is 
 		//if x(conditional),  pnode->next->type is conditional op and pnode->next-next is NULL
 		insertreplace(pnode, psig, tsig, isig);
 		Sig = *psig;
@@ -1096,7 +1188,7 @@ CSignal *CAstSig::RetrieveCell(const char *cellvar, int id)
 	if (!cellvar) return NULL;
 	CSignals *psig = RetrieveTag(cellvar);	// Find and retrive a variable
 	if (!psig) return NULL;
-	if (psig->cell.size()<id) return NULL;
+	if (psig->cell.size()<(size_t)id) return NULL;
 	return &(psig->cell[id-1]);
 }
 

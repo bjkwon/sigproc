@@ -694,7 +694,7 @@ assign: T_ID '=' exp_range
 		$$->next->LastChild = $3;
 	}
 	| T_ID '{' exp '}' '(' exp '~' exp ')' '=' exp
-	{//Probably this will work. 4/8/2017 Just check AstSig.cpp
+	{
 		$$ = newAstNode(NODE_INITCELL, @$);
 		$$->str = $1;
 		$$->child = $11;
