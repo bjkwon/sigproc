@@ -163,7 +163,10 @@ body& body::operator=(const body& rhs)
 		size_t currentBufSize = bufBlockSize * nSamples; 
 		size_t reqBufSize = rhs.bufBlockSize * rhs.nSamples;
 		if (currentBufSize < reqBufSize) 
-		{delete[] buf; logbuf = new bool[reqBufSize];}
+		{
+			if (nSamples>0) delete[] buf; 
+			logbuf = new bool[reqBufSize];
+		}
 		nSamples = rhs.nSamples;
 		bufBlockSize = rhs.bufBlockSize;
 		memcpy(buf, rhs.buf, nSamples*bufBlockSize);
@@ -491,6 +494,7 @@ body &body::replace(body &sec, body &index)
 	{
 		int id = (int)(index.buf[k]+.5)-1;
 		if (id<0) throw "replace index cannot be negative."; 
+		if (id>nSamples) throw "replace index exceeds the range.";
 		if (sec.nSamples==1) // items from id1 to id2 are to be replaced with sec.value()
 			buf[id] = sec.value();
 		else
@@ -503,6 +507,9 @@ body &body::replace(body &sec, int id1, int id2)
 { // this replaces the data body between id1 and id2 (including edges) with sec
 	if (id1<0||id2<0) throw "replace index cannot be negative."; 
 	if (sec.bufBlockSize!=bufBlockSize) throw "replace must be between the same data structure."; 
+	//id1 and id2 are zero-based here.
+	if (id1>nSamples-1) throw "replace index exceeds the range.";
+	if (id2>nSamples-1) throw "replace index exceeds the range.";
 	if (sec.nSamples==1) // no change in length--items from id1 to id2 are to be replaced with sec.value()
 		for (int k=id1; k<=id2; k++) buf[k] = sec.value();
 	else
@@ -669,6 +676,11 @@ EXP_CS CSignal& CSignal::operator=(const CSignal& rhs)
 		{
 			chain = new CSignal;
 			*chain = *rhs.chain;
+		}
+		else
+		{
+			delete chain;
+			chain=NULL;
 		}
 	}
 	return *this; // return self-reference so cascaded assignment works
@@ -894,7 +906,7 @@ EXP_CS void CSignal::AddMultChain(char type, CSignal *sec)
 				int id = round(( anc0-p->tmark )/1000.*fs);
 				if (status&1) // type=='+' add the two,  type=='*' multiply
 				{
-					if (type=='+')	for (int k=0; k<count*bufBlockSize; k++)	part.buf[k] += p->buf[k+id];
+					if (type=='+')	for (int k=0; k<count; k++)	part.buf[k] += p->buf[k+id];
 					else if (type=='*')	
 					{
 						if (part.IsComplex()) for (int k=0; k<count; k++)	part.cbuf[k] *= p->cbuf[k+id];
@@ -959,7 +971,9 @@ EXP_CS CSignal& CSignal::ConnectChains()
 		while (1) {
 			memcpy(part.logbuf+offset, p->buf, p->nSamples*bufBlockSize);
 			offset += p->nSamples*bufBlockSize;
-			if (p->chain!=NULL && offset==(int)(p->chain->tmark/1000.*fs+.1)*bufBlockSize/sizeof(double))
+//			int dd;
+//			if (p->chain) dd = (int)(p->chain->tmark/1000.*fs+.1);
+			if (p->chain!=NULL && offset==(int)(p->chain->tmark/1000.*fs+.1)*bufBlockSize)
 				p=p->chain;
 			else
 				break;
@@ -1199,7 +1213,6 @@ EXP_CS CSignal& CSignal::Take(CSignal& out, double begin_ms, double end_ms)
 	int id1 = round(begin_ms/1000.*fs);
 	int id2 = round(end_ms/1000.*fs)-1;
 	Take(out, id1, id2);
-//	out.tfraction = (end_ms-begin_ms) - (id2-id1+1)/(double)fs*1000.;
 	return out;
 }
 
@@ -1215,6 +1228,14 @@ EXP_CS CSignal& CSignal::Squeeze()
 	delete chain;
 	chain = NULL;
 	return *this;
+}
+
+EXP_CS double CSignal::totaldur()
+{
+	double out;
+	for (CSignal*p(this); p; p=p->chain)
+		out = p->endt();
+	return out;
 }
 
 
@@ -1310,29 +1331,34 @@ EXP_CS CSignal& CSignal::MakeChains(vector<double> tmarks)
 	return (*this = out);
 }
 
+EXP_CS CSignal& CSignal::LogOp(CSignal &rhs, int type)
+{
+	for(CSignal *p = this; p; p=p->chain)
+		p->body::LogOp(rhs, type);
+	return *this;
+}
+
 CSignal& CSignal::removeafter(double timems)
 { // if timems is in the grid, the point is removed (but dur will be until that grid point)
-	vector<CSignal*> chains2remove;
+	CSignal *last;
 	for (CSignal *p(this); p; p=p->chain)
 	{
-		if (timems > p->tmark+p->dur()) continue; 
+		if (timems > p->tmark+p->dur()) {last=p; continue; }
 		else if (timems > p->tmark) 
 		{
 			// no need to worry about p->tmark
 			// all points occuring on and after timems will be removed (dur will still be timems)
 			// if timems exceeds the grid of p->tmark, it won't be removed, so it is ceil.
 			p->nSamples = (int)ceil((timems-p->tmark)*fs/1000.);
-			chains2remove.push_back(p);
 		}
 		else
 		{
-			p->nSamples=0;
-			delete[] p->buf;
-			chains2remove.push_back(p);
+			delete[] p;
+			last->chain=NULL;
+			break;
 		}
+		last=p;
 	}
-	for (size_t k(0); k<chains2remove.size(); k++)
-		chains2remove[k]->chain = NULL;
 	return *this;
 }
 
@@ -1384,7 +1410,7 @@ CSignal& CSignal::Trim(double begin_ms, double end_ms)
 		return *this;
 	}
 	removeafter(end_ms);
-	timeshift(begin_ms);
+	CSignal p = timeshift(begin_ms);
 	return *this;
 }
 
@@ -1686,20 +1712,32 @@ EXP_CS CSignal& CSignal::Replace(CSignal &newsig, double t1, double t2)
 { // signal portion between t1 and t2 is replaced by newsig
  // t1 and t2 are in ms
 //	double lastendtofnewsig = newsig.GetDeepestChain()->endt();
+
 	CSignal *p(this);
 	CSignal copy(*this);
 	double samplegrid = 1./fs;
 	double deviationfromgrid = t1-((double)(int)(t1*fs))/fs;
-	if (t1>0. && deviationfromgrid>-samplegrid && deviationfromgrid < samplegrid)
+	bool inbet(false); // true means t1 is in between chains.
+	for (p=this; p && !inbet; p=p->chain)
+	{
+		if (t1>p->endt() && p->chain && t1<p->chain->tmark)
+			inbet=true;
+	}
+	if (t1>0. && fabs(deviationfromgrid)>1.e-8 && deviationfromgrid>-samplegrid && deviationfromgrid < samplegrid) 
 		t1 -= 1000.*samplegrid;  // because its in ms
 	Trim(0, t1);
+	if (inbet)
+		newsig >>= t1-endt();
+	if (newsig.chain) {delete newsig.chain; newsig.chain = NULL;}
+	*this += &newsig;
 	//if t2 coincides with the sampling grid, don't take that point here (it will be taken twice)
 	deviationfromgrid = t2-((double)(int)(t2*fs))/fs;
-	if (deviationfromgrid>-samplegrid && deviationfromgrid < samplegrid)
+	// deviationfromgrid of zero can masquerade as a very small number
+	if (fabs(deviationfromgrid)>1.e-8 && deviationfromgrid>-samplegrid && deviationfromgrid < samplegrid)
 		t2 += 1000.*samplegrid;  // because its in ms
 	copy.Trim(t2, std::numeric_limits<double>::infinity());
-	*this += &newsig;
 	*this += &copy;
+	MergeChains();
 	return *this;
 }
 
@@ -2707,6 +2745,13 @@ EXP_CS void CSignals::filtfilt(int nTabs, double *num, double *den)
 {
 	CSignal::filtfilt(nTabs, num, den);
 	if (next!=NULL) next->filtfilt(nTabs, num, den);
+}
+
+EXP_CS CSignals& CSignals::LogOp(CSignals &rhs, int type)
+{
+	CSignal::LogOp(rhs,type);
+	if (next) next->LogOp(rhs,type);
+	return *this;
 }
 
 EXP_CS double CSignals::MakeChainless()

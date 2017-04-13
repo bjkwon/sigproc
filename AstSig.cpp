@@ -367,6 +367,17 @@ CSignals &CAstSig::getlhs(const AstNode *pnode, CSignal *tagsig, CSignals &isig)
 	return (Sig=out);
 }
 
+void CAstSig::checkindexrange(const AstNode *pnode, CSignal *inout, int id, string errstr)
+{
+	if (id>inout->nSamples) 
+	{
+		string out("Index on ");
+		out += errstr;
+		out += " out of range.";
+		throw CAstException(pnode, out);
+	}
+}
+
 CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig)
 {
 	if (!indsig.IsLogical() && inout->GetType()== CSIG_AUDIO && sec.GetType()!=CSIG_AUDIO && sec.GetType()!=CSIG_EMPTY)
@@ -393,7 +404,9 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 		else
 		{
 			if (sec.GetType()!=CSIG_SCALAR) throw CAstException(pnode, "RHS must be a scalar");
-			inout->buf[(int)(indsig.value()+.5)-1] = sec.value();
+			int id = (int)(indsig.value()+.5);
+			checkindexrange(pnode, inout, id, "LHS");
+			inout->buf[id-1] = sec.value();
 		}
 	}
 	else
@@ -411,6 +424,8 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 				{
 					// this must be contiguous
 					if (!isContiguous(indsig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
+					checkindexrange(pnode, inout, id1, "LHS (first)");
+					checkindexrange(pnode, inout, id2, "LHS (second)");
 					inout->Replace(sec, 1000.*(id1-1)/inout->GetFs(), 1000.*(id2-1)/inout->GetFs());
 				}
 				else if (!p->next && !p->str) // if s(conditional) is on the LHS, the RHS must be either a scalar, or the replica, i.e., s(conditional)
@@ -419,12 +434,24 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 					if (sec.IsScalar()) 
 					{
 						double val = sec.value();
-						for (int k=0; k<indsig.nSamples; k++)
-							if (indsig.logbuf[k]) inout->buf[k] = val;
+						for (CSignal *piece(inout), *index(&indsig); piece; piece = piece->chain, index = index->chain)
+						{
+							for (int k=0; k<index->nSamples; k++)
+								if (index->logbuf[k]) piece->buf[k] = val;
+						}
 					}
 					else
-					{ // RHS must be the replica .. do this later ... 4/9/2017
-
+					{ // RHS is conditional (can be replica)
+					  // This works but boundary points have some issues, because the way Replace handles it. 4/13/2017 bjk
+						CSignal *p=&sec; 
+						while (p)
+						{
+							CSignal newsig = *p;
+							newsig.tmark = 0.;
+							inout->Replace(newsig, p->tmark, p->endt());
+							p = p->chain;
+						}
+						inout->MergeChains();
 					}
 				}
 				else 
@@ -791,36 +818,13 @@ try {
 		isig = Compute(p->next);
 		isig += &Compute(p->next->next);
 		Sig = getlhs(pnode, psig, isig);
-
-
-
-
-		//double t[2];
-		//pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
-		//pAst_context->type = T_ID;
-		//pAst_context->str = (char*)malloc(strlen(pnode->child->str)+1);
-		//strcpy(pAst_context->str, pnode->child->str);
-		//p = p->next;
-		//for (int k(0); k<2; k++, p=p->next) {
-		//	Sig = Compute(p);
-		//		if (!Sig.IsScalar())
-		//			throw CAstException(p, "The arguments of extraction must be scalars.");
-		//	t[k] = Sig.value();
-		//}
-		//yydeleteAstNode(pAst_context, 0);
-		//pAst_context=NULL;
-		//Compute(pnode->child);
-		//checkAudioSig(pnode,  Sig);
-		//Sig.Trim(t[0], t[1]);
 		break;
-
 	case NODE_IDLIST:
 		// used in x(tp1~tp2) only
 		tsig = Compute(pnode->child);
 		Compute(pnode->LastChild);
 		Sig += &tsig;
 		break;
-
 	case NODE_IXASSIGN:
 		// when part of variable (i.e., range of index) is on the LHS, 
 		// i.e., x(n)=(something), x(m:n)=(something), or x(t1~t2)=(something)

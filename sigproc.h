@@ -191,6 +191,7 @@ public:
 	// Signal alteration (stereo handling with an established convention)
 	virtual const CSignal& operator+=(CSignal *yy); // Concatenation
 
+	EXP_CS CSignal& LogOp(CSignal &rhs, int type);
 	// Signal extraction (stereo handling with a clean, inarguable convention)
 	EXP_CS CSignal& Take(CSignal& out, int  id1);
 	EXP_CS CSignal& Take(CSignal& out, double begin_ms);
@@ -221,7 +222,9 @@ public:
 	EXP_CS void SetFs(int  newfs) {fs = newfs; };
 	EXP_CS double* GetBuffer() {return buf;}
 	EXP_CS double dur() {return (double)nSamples/fs*1000.;}// duration in miliseconds
-	EXP_CS double endt() {return tmark + dur();}// end time poEXP_CS int in miliseconds
+	EXP_CS double endt() {return tmark + dur();}// end time point in miliseconds
+	EXP_CS double totaldur();
+
 	EXP_CS bool IsScalar() const {return (GetType() == CSIG_SCALAR);}
 	EXP_CS bool IsEmpty() const {return (GetType() == CSIG_EMPTY);}
 	EXP_CS bool IsSingle() const {return ( (GetType() == CSIG_SCALAR || GetType() == CSIG_COMPLEX || GetType() == CSIG_STRING) && nSamples==1);}
@@ -320,6 +323,7 @@ public:
 	EXP_CS double * Modulate (double *env, int  lenEnv);
 	EXP_CS CSignals& Insert(double timept, CSignals &newchunk);
 	EXP_CS CSignals& Replace(CSignals &newsig, double t1, double t2);
+	EXP_CS CSignals& LogOp(CSignals &rhs, int type);
 
 	EXP_CS double * Mag();
 	EXP_CS CSignal Angle();
@@ -421,6 +425,7 @@ private:
 	AstNode *RetrieveUDF(const char *fname);
 	CSignals &getlhs(const AstNode *pnode, CSignal *tagsig, CSignals &isig);
 	CAstSig &insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig);
+	void checkindexrange(const AstNode *pnode, CSignal *inout, int id, string errstr);
 	bool isContiguous(body &id, int &begin, int &end);
 	bool isReplica(AstNode *pnode);
 	CSignals &extract(CSignal &Sig, body &isig);
