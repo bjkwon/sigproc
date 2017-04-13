@@ -265,7 +265,7 @@ CSignals &CAstSig::Eval(AstNode *pnode)
 	}
 }
 
-void AddConditionMeetingBlockAsChain(CSignals *Sig, CSignals *psig, int iBegin, int iNow, CSignal &part)
+void AddConditionMeetingBlockAsChain(CSignals *Sig, CSignal *psig, int iBegin, int iNow, CSignal &part)
 {
 	part.UpdateBuffer(iNow-iBegin);
 	memcpy(part.buf, (void*)(psig->buf+iBegin), (iNow-iBegin)*sizeof(double));
@@ -320,36 +320,55 @@ CSignals &CAstSig::extract(CSignal &in, body &isig)
 	return (Sig=out);
 }
 
-CSignals &CAstSig::getlhs(const AstNode *pnode, CSignal *tagsig, CSignals &isig)
+CSignals &CAstSig::getlhs(const AstNode *pnode, CSignal *inout, CSignals &indsig)
 {
-	CSignals out(tagsig->GetFs());
+	CSignals out(inout->GetFs());
 	AstNode *p = pnode->next; 
-	if (isig.IsScalar())
-	{
-		out.SetValue(tagsig->buf[(int)(isig.value()+.5)-1]);
-	}
+	if (indsig.IsScalar())
+		out.SetValue(inout->buf[(int)(indsig.value()+.5)-1]);
 	else
 	{
 		if (pnode->type==NODE_EXTRACT)
-			tagsig->Take(out, isig.buf[0], isig.buf[1]);
+			inout->Take(out, indsig.buf[0], indsig.buf[1]);
 		else if (pnode->type==NODE_IXASSIGN || pnode->type==NODE_INITCELL )
 		{
 			int id1, id2;
-			if (tagsig->GetType()==CSIG_AUDIO) 
+			if (inout->GetType()==CSIG_AUDIO) 
 			{
 				bool ch = isReplica(pnode->child);
 				if (p->type==NODE_IDLIST || (p->next && p->next->type==NODE_IDLIST) )
 			               // s(tp1~tp2)   or  cel{n}(tp1~tp2)
-					tagsig->Take(out, isig.buf[0], isig.buf[1]);
-				else if (p->type==NODE_ARGS || (p->next && p->next->type==NODE_CALL) )// s(id1:id2) or cel{n}(id1:id2)
+					inout->Take(out, indsig.buf[0], indsig.buf[1]);
+				else	if (indsig.IsLogical()) // s(conditional_var)
 				{
-					// this must be contiguous
-					if (!isContiguous(isig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
-					tagsig->Take(out, id1, id2);
+					bool prev = indsig.logbuf[0];
+					int k, id1(0);
+					CSignals part(inout->GetFs());
+					for (k=1; k<indsig.nSamples; k++)
+					{
+						//First, find the continguous range that satisfy the condition
+						if (indsig.logbuf[k]) 
+						{
+							if (!prev)	id1 = k;
+							prev = true;
+							if (k==indsig.nSamples-1) // if the last point is true, the lask block should be taken.
+								AddConditionMeetingBlockAsChain(&out, inout, id1, k+1, part);
+						}
+						else
+						{
+							if (prev) //if previously true, but currently false, take this block since id1
+								AddConditionMeetingBlockAsChain(&out, inout, id1, k, part);
+							prev = false;
+						}
+					}
 				}
-				else if (!p->next && !p->str) // if s(conditional) is on the LHS, the RHS must be either a scalar, or the replica, i.e., s(conditional)
-				{
-			// conditional... to be done...4/11/2017
+				else if (p->type==NODE_ARGS || (p->next && p->next->type==NODE_CALL) )
+				{ // s(id1:id2) or cel{n}(id1:id2)
+					// this must be contiguous
+					if (!isContiguous(indsig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
+					checkindexrange(pnode, inout, id1, "LHS (first)");
+					checkindexrange(pnode, inout, id2, "LHS (second)");
+					inout->Take(out, id1, id2);				  // id or time points?
 				}
 				else 
 					 throw CAstException(pnode, "Internal logic error (insertreplace:1) --unexpected node type.");
@@ -358,7 +377,7 @@ CSignals &CAstSig::getlhs(const AstNode *pnode, CSignal *tagsig, CSignals &isig)
 			{
 				// v(1:5) or v([contiguous]) = (any array) to replace
 				// v(1:2:5) or v([non-contiguous]) = RHS; //LHS and RHS must match length.
-				return extract(*tagsig, isig);
+				return extract(*inout, indsig);
 			}
 		}
 		else 
@@ -366,6 +385,7 @@ CSignals &CAstSig::getlhs(const AstNode *pnode, CSignal *tagsig, CSignals &isig)
 	}
 	return (Sig=out);
 }
+
 
 void CAstSig::checkindexrange(const AstNode *pnode, CSignal *inout, int id, string errstr)
 {
@@ -420,13 +440,26 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 				if (p->type==NODE_IDLIST || (p->next && p->next->type==NODE_IDLIST) )
 			               // s(tp1~tp2)   or  cel{n}(tp1~tp2)
 					inout->Replace(sec, indsig.buf[0], indsig.buf[1]);
-				else if (p->type==NODE_ARGS || (p->next && p->next->type==NODE_CALL) )// s(id1:id2) or cel{n}(id1:id2)
+				else if (p->type==NODE_ARGS || (p->next && p->next->type==NODE_CALL) )
 				{
-					// this must be contiguous
-					if (!isContiguous(indsig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
-					checkindexrange(pnode, inout, id1, "LHS (first)");
-					checkindexrange(pnode, inout, id2, "LHS (second)");
-					inout->Replace(sec, 1000.*(id1-1)/inout->GetFs(), 1000.*(id2-1)/inout->GetFs());
+					if (indsig.IsLogical()) // s(conditional_var)
+					{
+						for (CSignal *p=&sec; p; p = p->chain)
+						{
+							int id((int)(p->tmark*GetFs()/1000+.5)); 
+							for (int k=0; k<p->nSamples; k++)
+								if (indsig.logbuf[id+k]) 
+									inout->buf[id+k] = p->buf[k];
+						}
+					}
+					else // s(id1:id2) or cel{n}(id1:id2)
+					{
+						// this must be contiguous
+						if (!isContiguous(indsig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
+						checkindexrange(pnode, inout, id1, "LHS (first)");
+						checkindexrange(pnode, inout, id2, "LHS (second)");
+						inout->Replace(sec, 1000.*(id1-1)/inout->GetFs(), 1000.*(id2-1)/inout->GetFs());
+					}
 				}
 				else if (!p->next && !p->str) // if s(conditional) is on the LHS, the RHS must be either a scalar, or the replica, i.e., s(conditional)
 				{
@@ -442,16 +475,14 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 					}
 					else
 					{ // RHS is conditional (can be replica)
-					  // This works but boundary points have some issues, because the way Replace handles it. 4/13/2017 bjk
-						CSignal *p=&sec; 
-						while (p)
+					  // At this point no need to worry about replacing null with non-null (i.e., signal is always non-null in the signal portions of sec. 
+					  //   4/13/2017
+						for (CSignal *p=&sec; p; p = p->chain)
 						{
-							CSignal newsig = *p;
-							newsig.tmark = 0.;
-							inout->Replace(newsig, p->tmark, p->endt());
-							p = p->chain;
+							int id((int)(p->tmark*GetFs()/1000+.5)); 
+							for (int k=0; k<p->nSamples; k++)
+								inout->buf[id+k] = p->buf[k];
 						}
-						inout->MergeChains();
 					}
 				}
 				else 
