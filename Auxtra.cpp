@@ -595,8 +595,8 @@ void getLineSpecifier (const AstNode *pnode, string input, LineStyle &ls, int &m
 			ls = linestylelist["-"]; // set it solid 
 }
 
-#define LOADPF(OUT, DEFTYPE, FUNCSIGNATURE) if ((OUT = (DEFTYPE)GetProcAddress((HMODULE)hLib, FUNCSIGNATURE))==NULL) {char buf[64]; sprintf(buf, "cannot find %s", FUNCSIGNATURE); MessageBox(NULL, "LOADPF error", buf, 0); return 0;}
-#define LOADPF2(OUT, DEFTYPE, INDEX, SIMPLESIGNATURE) if ((OUT = (DEFTYPE)GetProcAddress((HMODULE)hLib, (char*)INDEX))==NULL) {char buf[64]; sprintf(buf, "cannot find %s", SIMPLESIGNATURE); MessageBox(NULL, "LOADPF2 error", buf, 0); return 0;}
+#define LOADPF(OUT, DEFTYPE, FUNCSIGNATURE) if ((OUT = (DEFTYPE)GetProcAddress((HMODULE)hLib, FUNCSIGNATURE))==NULL) {char buf[256]; sprintf(buf, "cannot find %s", FUNCSIGNATURE); MessageBox(NULL, "LOADPF error", buf, 0); return 0;}
+#define LOADPF2(OUT, DEFTYPE, INDEX, SIMPLESIGNATURE) if ((OUT = (DEFTYPE)GetProcAddress((HMODULE)hLib, (char*)INDEX))==NULL) {char buf[256]; sprintf(buf, "cannot find %s", SIMPLESIGNATURE); MessageBox(NULL, "LOADPF2 error", buf, 0); return 0;}
 
 //HANDLE _OpenFigure(RECT *rt, const CSignals &data, int devID, double block);
 
@@ -628,7 +628,7 @@ int LoadGRAFFY()
 #else
 	hLib = LoadLibrary(strcat(path, "graffy64.dll")); // fix this.... if the path has been changed in the middle, we are no longer in AppPath
 	LOADPF(fp_AddAxis, PFUN_ADDAX, "?AddAxis@@YAPEAXPEAXNNNN@Z");
-	LOADPF(fp_OpenFigure, PFUN_OPEN, "?OpenFigure@@YAPEAXPEAVCRect@Win32xx@@AEBVCSignals@@PEAUHWND__@@HN@Z");
+	LOADPF(fp_OpenFigure, PFUN_OPEN, "?OpenFigure@@YAPEAXPEAVCRect@Win32xx@@PEAUHWND__@@HN@Z");
 	LOADPF(fp_PlotCSignals1, PFUN_PLOTCSIGNALS1, "?PlotCSignals@@YAPEAXPEAXAEAVCSignals@@KDW4LineStyle@@@Z");
 	LOADPF(fp_PlotCSignals2, PFUN_PLOTCSIGNALS2, "?PlotCSignals@@YAPEAXPEAXAEAVCSignals@@1KDW4LineStyle@@@Z");
 	LOADPF(fp_deleteObj, PFUN_DEL, "?deleteObj@@YAXPEAX@Z");

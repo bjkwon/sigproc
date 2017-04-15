@@ -1546,6 +1546,7 @@ void aux_tone(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	if (len==1) 
 	{
 		double freq = ast.Sig.value();
+		if (freq>=ast.GetFs()/2) throw CAstException(pnode, p, fnsigs, "Frequency exceeds Nyquist frequency.");
 		ast.Sig.Reset(ast.GetFs());
 		ast.Sig.Tone(freq, second.value(), third.value());
 	}
@@ -1553,6 +1554,7 @@ void aux_tone(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	{
 		vector<double> freqs(len);
 		memcpy((void*)&freqs[0], (void*)ast.Sig.GetBuffer(), len*sizeof(double));
+		if (freqs[0]>=ast.GetFs()/2 || freqs[1]>=ast.GetFs()/2) throw CAstException(pnode, p, fnsigs, "Frequency exceeds Nyquist frequency.");
 		ast.Sig.Reset(ast.GetFs());
 		ast.Sig.Tone(freqs, second.value());
 	}
