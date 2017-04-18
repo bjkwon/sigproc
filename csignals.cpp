@@ -351,7 +351,9 @@ body &body::each(double (*fn)(double, double), body &arg)
 	if (arg.nSamples==1) 
 	{
 		double val = arg.value();
-		if (bufBlockSize==1)
+		if (bufBlockSize==1 && arg.bufBlockSize==1)
+			for (int k=0; k<nSamples; k++)	logbuf[k] = fn(logbuf[k],arg.logbuf[0]); 
+		else if (bufBlockSize==1 && arg.bufBlockSize!=1)
 			for (int k=0; k<nSamples; k++)	logbuf[k] = fn(logbuf[k],val); 
 		else
 			for (int k=0; k<nSamples; k++)	buf[k] = fn(buf[k],val); 
@@ -360,16 +362,20 @@ body &body::each(double (*fn)(double, double), body &arg)
 	{
 		double baseval = buf[0];
 		UpdateBuffer(arg.nSamples);
-		if (bufBlockSize==1)
+		if (bufBlockSize==1 && arg.bufBlockSize==1)
 			for (int k=0; k<arg.nSamples; k++) logbuf[k] = fn(baseval, arg.logbuf[k]); 
+		else if (bufBlockSize==1 && arg.bufBlockSize!=1)
+			for (int k=0; k<arg.nSamples; k++) logbuf[k] = fn(baseval, arg.buf[k]); 
 		else
 			for (int k=0; k<arg.nSamples; k++) buf[k] = fn(baseval, arg.buf[k]); 
 	}
 	else
 	{
 		nSamples = min(nSamples, arg.nSamples);
-		if (bufBlockSize==1)
+		if (bufBlockSize==1 && arg.bufBlockSize==1)
 			for (int k=0; k<nSamples; k++) logbuf[k] = fn(logbuf[k], arg.logbuf[k]); 
+		else if (bufBlockSize==1 && arg.bufBlockSize!=1)
+			for (int k=0; k<nSamples; k++) logbuf[k] = fn(logbuf[k], arg.buf[k]); 
 		else
 			for (int k=0; k<nSamples; k++) buf[k] = fn(buf[k], arg.buf[k]); 
 	}
@@ -1886,7 +1892,7 @@ EXP_CS double * CSignal::DC(double dur_ms)
 EXP_CS double * CSignal::DC(int nsamples)
 {
 	Reset();
-	UpdateBuffer(nsamples); //allocate memory if necessary
+	UpdateBuffer(nsamples);
 	for (int i=0; i<nsamples; i++) buf[i] = 1.;
 	return buf;
 }
@@ -1898,7 +1904,7 @@ int CSignal::IsNull(double timept)
 	for (; p; p=p->chain)
 		if (timept >= p->tmark)
 		{
-			if (timept <= p->endt()) return 0;
+			if (timept > p->endt()) return 0;
 			else
 				continue;
 		}

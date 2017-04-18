@@ -644,7 +644,7 @@ assign: T_ID '=' exp_range
 		$$ = newAstNode(NODE_INITCELL, @$);
 		$$->str = $1;
 		$$->child = $6;
-		$$->next = $3;
+		$$->childLHS = $3;
 	}
 	| T_ID '(' exp '~' exp ')' "+=" exp_range
 	{
@@ -675,33 +675,33 @@ assign: T_ID '=' exp_range
 		$$ = newAstNode(NODE_IXASSIGN, @$);
 		$$->str = $1;
 		$$->child = $6;
-		$$->next = $3;
+		$$->childLHS = $3;
 	}
 	| T_ID '(' condition ')' '=' exp_range
 	{ /* x(x>0) = scalar */
 		$$ = newAstNode(NODE_IXASSIGN, @$);
 		$$->str = $1;
 		$$->child = $6;
-		$$->next = $3;
+		$$->childLHS = $3;
 	}
 	| T_ID '(' exp '~' exp ')' '=' exp
 	{
 		$$ = newAstNode(NODE_IXASSIGN, @$);
 		$$->str = $1;
 		$$->child = $8;
-		$$->next = newAstNode(NODE_IDLIST, @$);
-		$$->next->child = $5;
-		$$->next->LastChild = $3;
+		$$->childLHS = newAstNode(NODE_IDLIST, @$);
+		$$->childLHS->child = $5;
+		$$->childLHS->LastChild = $3;
 	}
 	| T_ID '{' exp '}' '(' exp '~' exp ')' '=' exp
 	{
 		$$ = newAstNode(NODE_INITCELL, @$);
 		$$->str = $1;
 		$$->child = $11;
-		$$->next = $3;
-		$3->next = newAstNode(NODE_IDLIST, @$);
-		$3->next->child = $8;
-		$3->next->LastChild = $6;
+		$$->childLHS = $3;
+		$3->childLHS = newAstNode(NODE_IDLIST, @$);
+		$3->childLHS->child = $8;
+		$3->childLHS->LastChild = $6;
 	}
 	//T_ID '{' exp '}' '(' arg_list ')' '=' exp_range  -->  does not work 4/8/2017 bjk
 	| T_ID '{' exp '}' '(' exp ')' '=' exp_range
@@ -709,7 +709,7 @@ assign: T_ID '=' exp_range
 		$$ = newAstNode(NODE_INITCELL, @$);
 		$$->str = $1;
 		$$->child = $9;
-		$$->next = $3;
+		$$->childLHS = $3;
 		$3->next = $6;
 	}	
 	| T_ID '{' exp '}' '(' exp_range ')' '=' exp_range
@@ -717,7 +717,7 @@ assign: T_ID '=' exp_range
 		$$ = newAstNode(NODE_INITCELL, @$);
 		$$->str = $1;
 		$$->child = $9;
-		$$->next = $3;
+		$$->childLHS = $3;
 		$3->next = $6;
 	}
 	| T_ID '=' assign
@@ -731,22 +731,22 @@ assign: T_ID '=' exp_range
 		$$ = newAstNode('=', @$);
 		$$->str = $1;
 		$$->child = $6;
-		$6->next = $3;
+		$6->childLHS = $3;
 	}
 	| T_ID '(' arg_list ')' '=' assign
 	{
 		$$ = newAstNode(NODE_IXASSIGN, @$);
 		$$->str = $1;
 		$$->child = $6;
-		$6->next = $3;
+		$6->childLHS = $3;
 	}
 	| T_ID '{' exp '}' '(' exp ')' '=' assign
 	{
 		$$ = newAstNode(NODE_IXASSIGN, @$);
 		$$->str = $1;
 		$$->child = $9;
-		$9->next = $6;
-		$6->next = $3;
+		$9->childLHS = $6;
+		$6->childLHS = $3;
 	}
 	| T_ID '=' initcell 
 	{ // x={"bjk",noise(300), 4.5555}
@@ -808,14 +808,14 @@ exp: T_NUMBER
 		$$ = newAstNode(T_ID, @$);
 		$$->str = $1;
 		$$->child = $3;
-		$3->next = $6;
+		$3->childLHS = $6;
 	}
 	| T_ID '{' exp '}' '(' exp_range ')'
 	{
 		$$ = newAstNode(T_ID, @$);
 		$$->str = $1;
 		$$->child = $3;
-		$3->next = $6;
+		$3->childLHS = $6;
 		$$->line = 232;
 	}
 	| T_ID '{' '}'

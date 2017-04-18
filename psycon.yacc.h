@@ -31,6 +31,7 @@ typedef struct AstNode_t {
   double dval;
   char *str;
   struct AstNode_t *child;
+  struct AstNode_t *childLHS;
   struct AstNode_t *LastChild;
   struct AstNode_t *next;
 } AstNode;

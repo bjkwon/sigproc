@@ -103,7 +103,7 @@ void checkComplex (const AstNode *pnode, CSignals &checkthis)
 void checkVector(const AstNode *pnode, CSignals &checkthis, string addmsg)
 {
 	string msg("A non-audio array is required ");
-	if (checkthis.GetType()!=CSIG_VECTOR && checkthis.GetType()!=CSIG_SCALAR)
+	if (!checkthis.IsEmpty() && checkthis.GetType()!=CSIG_VECTOR && checkthis.GetType()!=CSIG_SCALAR)
 		throw CAstException(pnode, (msg+addmsg).c_str());
 }
 
@@ -225,6 +225,7 @@ void aux_minmax(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	int nArgs(0);
 	for (const AstNode *cp=p; cp; cp=cp->next)	++nArgs;
 	ast.Compute(p);
+	if (ast.Sig.IsEmpty()) return; //for empty input, empty outpu
 	string fname = pnode->str;
 	if (nArgs==1)
 	{
@@ -1074,7 +1075,7 @@ void aux_fft(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 };
 
 void aux_isnull(CAstSig &ast, const AstNode *pnode, const AstNode *p)
-{
+{ // if the signal is null at specified time_pt
 	const char *fnsigs[] = {
 		"(signal, timept_ms)", 0};
 	checkNumArgs(pnode, p, fnsigs, 2, 2);
@@ -1083,9 +1084,50 @@ void aux_isnull(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		throw CAstException(pnode, p, fnsigs, "argument must be a scalar.");
 	double vv = ast.Sig.value();
 	ast.Compute(p);
+	checkAudioSig(pnode, ast.Sig);
 	ast.Sig.SetValue(ast.Sig.IsNull(vv));
+	ast.Sig.MakeLogical();
 }
 
+void aux_isempty(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	const char *fnsigs[] = {
+		"(variable)", 0};
+	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	ast.Compute(p);
+	ast.Sig.SetValue(ast.Sig.IsEmpty());
+	ast.Sig.MakeLogical();
+}
+
+void aux_or(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	double res(0.);
+	const char *fnsigs[] = {
+		"(logical variable)", 0};
+	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	ast.Compute(p);
+	if (!ast.Sig.IsLogical())
+		throw CAstException(pnode, p, fnsigs, "argument must be a logical variable.");
+	for (int k=0; k<ast.Sig.nSamples; k++)
+		if (ast.Sig.logbuf[k]) res=1., k=ast.Sig.nSamples+1;
+	ast.Sig.SetValue(res);
+	ast.Sig.MakeLogical();
+}
+
+void aux_and(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	double res(1.);
+	const char *fnsigs[] = {
+		"(logical variable)", 0};
+	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	ast.Compute(p);
+	if (!ast.Sig.IsLogical())
+		throw CAstException(pnode, p, fnsigs, "argument must be a logical variable.");
+	for (int k=0; k<ast.Sig.nSamples; k++)
+		if (!ast.Sig.logbuf[k]) res=0., k=ast.Sig.nSamples+1;
+	ast.Sig.SetValue(res);
+	ast.Sig.MakeLogical();
+}
 
 void aux_ifft(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
@@ -1754,6 +1796,9 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	else if (fname == "fft")		aux_fft(*this, pnode, p);
 	else if (fname == "ifft")		aux_ifft(*this, pnode, p);
 	else if (fname == "isnull")		aux_isnull(*this, pnode, p);
+	else if (fname == "isempty")	aux_isempty(*this, pnode, p);
+	else if (fname == "and")		aux_and(*this, pnode, p);
+	else if (fname == "or")			aux_or(*this, pnode, p);
 	else if (fname == "envelope")	aux_envelope(*this, pnode, p);
 	else if (fname == "hilbert")	aux_hilbert(*this, pnode, p);
 	else if (fname == "shift")		aux_shift(*this, pnode, p);

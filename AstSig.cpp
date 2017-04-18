@@ -323,7 +323,7 @@ CSignals &CAstSig::extract(CSignal &in, body &isig)
 CSignals &CAstSig::getlhs(const AstNode *pnode, CSignal *inout, CSignals &indsig)
 {
 	CSignals out(inout->GetFs());
-	AstNode *p = pnode->next; 
+	AstNode *p = pnode->childLHS; 
 	if (indsig.IsScalar())
 		out.SetValue(inout->buf[(int)(indsig.value()+.5)-1]);
 	else
@@ -403,7 +403,7 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 	if (!indsig.IsLogical() && inout->GetType()== CSIG_AUDIO && sec.GetType()!=CSIG_AUDIO && sec.GetType()!=CSIG_EMPTY)
 		throw CAstException(pnode, "Referencing timepoint(s) in an audio variable requires another audio signal on the RHS.");
 	bool logicalindex = indsig.IsLogical();
-	AstNode *p = pnode->next; 
+	AstNode *p = pnode->childLHS; 
 	if (inout->GetType()!= CSIG_AUDIO && indsig.IsLogical())
 	{ // For non-audio, if isig is the result of logical operation, get the corresponding indices 
 		CSignals trueID(1);
@@ -416,7 +416,6 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 		indsig = trueID;
 	}
 
-	// p->next should be scalar, T_ID, or p:q (but no p:r:q)
 	if (indsig.IsScalar())
 	{
 		if (inout->GetType()==CSIG_AUDIO) 				// s(tp) = sound; //insert
@@ -514,7 +513,6 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 
 CSignals &CAstSig::Compute(const AstNode *pnode)
 {
-//	Sig.bufBlockSize=1;
 	int count(0);
 	int mn, mx;
 	CSignals tsig, isig, *psig, lsig, rsig;
@@ -574,7 +572,7 @@ try {
 		break;
 	case NODE_INITCELL: 
 		// always update with the new statement, discard what was in there previously.
-		if (!pnode->next)
+		if (!pnode->childLHS)
 		{ // x={"bjk",noise(300), 4.5555}
 			for (; p;count++, p=p->next)
 				;
@@ -588,36 +586,44 @@ try {
 		}
 		else
 		{
-			isig = Compute(pnode->next);
-			if (!isig.IsScalar())	throw CAstException(p->next, "Cell index must be a scalar.");
+			isig = Compute(pnode->childLHS);
+			if (!isig.IsScalar())	throw CAstException(p->childLHS, "Cell index must be a scalar.");
 			int id = (int)(isig.value()+.5);
-			
-			if (pnode->next->next)
-			{
-				CSignal *cellsig = RetrieveCell(pnode->str, id);
-				if (!cellsig) throw CAstException(pnode, "Cell variable with specified index not available.");
-				isig = Compute(pnode->next->next); // should be scalar, T_ID, or p:q (but no p:r:q)
-				// if cell{n}(tp1~tp2), pnode->next->next->type is NODE_IDLIST
-				// if cell{n}(id1:id2), pnode->next->next->type is NODE_CALL 
-				if (isReplica(p))
-					replica = getlhs(pnode, cellsig, isig);
-				//rhs compute should be done after replica is ready
-				tsig = Compute(p); 
-				insertreplace(pnode, cellsig, tsig, isig);
-				SetCell(pnode->str, id, *cellsig);
-			}
+			CSignals *psig = RetrieveTag(pnode->str);
+			if (!psig) throw CAstException(pnode, "Cell variable not available.");
+			if (id>(int)psig->cell.size()) throw CAstException(pnode, "Cell index is out of range.");
+			CSignal *cellsig = RetrieveCell(pnode->str, id);
+			tsig = Compute(p); 
+			if (!cellsig) 
+				AddCell(pnode->str, tsig);
 			else
 			{
-				tsig = Compute(p); 
+				if (pnode->childLHS->next)
+				{
+					isig = Compute(pnode->childLHS->next); // should be scalar, T_ID, or p:q (but no p:r:q)
+					// if cell{n}(tp1~tp2), pnode->next->next->type is NODE_IDLIST
+					// if cell{n}(id1:id2), pnode->next->next->type is NODE_CALL 
+					if (isReplica(p))	replica = getlhs(pnode, cellsig, isig);
+					// rhs compute should be done after replica is ready
+					insertreplace(pnode, cellsig, tsig, isig);
+					tsig = *cellsig;
+				}
+				else
+					if (isReplica(p))	replica = *cellsig;
 				SetCell(pnode->str, id, tsig);
 			}
 		}
 		break;
 	case '+':
 		tsig = Compute(p);
-		blockCell(pnode,  Sig);
 		Compute(p->next);
-		Sig += tsig;
+		if (tsig.GetType()==CSIG_CELL)
+		{
+			tsig.cell.push_back(Sig);
+			Sig = tsig;
+		}
+		else
+			Sig += tsig;
 		break;
 	case '-':
 		tsig = Compute(p); 
@@ -712,14 +718,17 @@ try {
 		Sig += &tsig;
 		Sig.MergeChains();
 		break;
+	case T_LOGIC_OR:
+	case T_LOGIC_AND:
+		tsig = Compute(p); 
+		if (pnode->type==T_LOGIC_OR && Sig.logbuf[0]) return Sig;
+		if (pnode->type==T_LOGIC_AND && !Sig.logbuf[0]) return Sig;
 	case '<':
 	case '>':
 	case T_COMP_LE:
 	case T_COMP_GE:
 	case T_COMP_EQ:
 	case T_COMP_NE:
-	case T_LOGIC_AND:
-	case T_LOGIC_OR:
 		blockCell(pnode,  Sig);
 		rsig = Compute(p->next); 
 		Compute(p); 
@@ -738,8 +747,14 @@ try {
 		break;
 	case T_IF:
 		for (; p && p->next; p=p->next->next)	// p is a condition of 'if' or 'elseif', p->next is the code block.
-			if (Compute(p).value())
-				return Compute(p->next);	// no further processing of this 'if' statement.
+		{
+			Compute(p);
+			if (Sig.IsLogical())
+			{	if (Sig.logbuf[0])		return Compute(p->next);	}
+			else
+			{	if (Compute(p).value())	return Compute(p->next);	}
+			// no further processing of this 'if' statement.
+		}
 		// now p is at the end of 'if' statement, without executing any conditional code.
 		if (p)	// if not null, it's the 'else' code block
 			Compute(p);
@@ -862,16 +877,16 @@ try {
 		psig = RetrieveTag(pnode->str);
 		if (!psig) throw CAstException(pnode, "variable not available.");
 		check = pnode->next!=NULL; // this is from T_ID '(' condition ')' '=' exp_range
-		if (pnode->next->type==NODE_ARGS) // x(5) = something
-			isig = Compute(pnode->next->child);
+		if (pnode->childLHS->type==NODE_ARGS) // x(5) = something
+			isig = Compute(pnode->childLHS->child);
 		else 
-			isig = Compute(pnode->next);
+			isig = Compute(pnode->childLHS);
 		if (!p)
 			throw CAstException(pnode, "Internal error: Empty assignment!");
-		if (p->next && p->next->next)
-			;// cell array indexed assignment
-		else if (!check && !(p->next && p->next->child && !p->next->child->next))
-			throw CAstException(pnode, "Indexed assignment must have one argument.");
+		//if (p->childLHS && p->next->childLHS)
+		//	;// cell array indexed assignment
+		//else if (!check && !(p->next && p->next->child && !p->next->child->next))
+		//	throw CAstException(pnode, "Indexed assignment must have one argument.");
 
 		if (isReplica(p))
 			replica = getlhs(pnode, psig, isig);
