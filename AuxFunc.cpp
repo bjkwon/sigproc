@@ -232,15 +232,18 @@ void aux_minmax(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		CSignal dummy, *extracted, out(1);
 		int nChains = ast.Sig.CountChains();
 		out.UpdateBuffer(nChains); // need a separate output variable because, otherwise, Sig gets changed with this UpdateBuffer call.
-		int m(0);
+		int m(0), temp(-1), dum;
 		bool loop(true);
 		while( (extracted = ast.Sig.ExtractDeepestChain(&dummy))!=&ast.Sig || loop )
 		{
-			if (fname == "max") out.buf[m++] = (double)((body*)extracted)->Max();
-			else if (fname == "min") out.buf[m++] = (double)((body*)extracted)->Min();
+			if (ast.Sig.IsString()) 
+				temp=extracted->nSamples-1;
+			if (fname == "max") out.buf[m++] = (double)((body*)extracted)->Max(dum,temp);
+			else if (fname == "min") out.buf[m++] = (double)((body*)extracted)->Min(dum,temp);
 			if (extracted == &ast.Sig) loop = false;
 		}
 		out.ReverseTime();
+		if (ast.Sig.IsLogical()) out.MakeLogical();
 		ast.Sig = out; // put it back.
 	}
 	else // 2

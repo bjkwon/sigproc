@@ -240,7 +240,8 @@ EXP_CS body& body::UpdateBuffer(int length)	// Set nSamples. Re-allocate buf if 
 
 EXP_CS void body::Reset()
 {
-	if (buf) delete[] buf;
+	if (buf) 
+		delete[] buf;
 	buf = NULL;
 	nSamples = 0;
 	bufBlockSize = sizeof(double);
@@ -509,6 +510,18 @@ body &body::replace(body &sec, body &index)
 	return *this;
 }
 
+bool body::isstring()
+{
+	int dummy;
+	if (nSamples==0) return false;
+	if (nSamples==1 && !strbuf[0]) return false;
+	int mn = (int) Min(dummy,nSamples-1);
+	if (mn>' ') return true;
+	int mx = (int) Max(dummy,nSamples-1);
+	if (mx == 1) return false;
+	return false;
+}
+
 body &body::replace(body &sec, int id1, int id2)
 { // this replaces the data body between id1 and id2 (including edges) with sec
 	if (id1<0||id2<0) throw "replace index cannot be negative."; 
@@ -516,19 +529,27 @@ body &body::replace(body &sec, int id1, int id2)
 	//id1 and id2 are zero-based here.
 	if (id1>nSamples-1) throw "replace index exceeds the range.";
 	if (id2>nSamples-1) throw "replace index exceeds the range.";
-	if (sec.nSamples==1) // no change in length--items from id1 to id2 are to be replaced with sec.value()
-		for (int k=id1; k<=id2; k++) buf[k] = sec.value();
+	int secnsamples = sec.nSamples;
+	bool ch = sec.isstring();
+	if (sec.isstring()) secnsamples--;
+	if (secnsamples==1) // no change in length--items from id1 to id2 are to be replaced with sec.value()
+	{
+		if (ch) 
+			for (int k=id1; k<=id2; k++) strbuf[k] = sec.strbuf[0];
+		else
+			for (int k=id1; k<=id2; k++) buf[k] = sec.value();
+	}
 	else
 	{
-		int nAdd = sec.nSamples;
+		int nAdd = secnsamples;
 		int nSubtr = id2-id1+1;
 		int newLen = nSamples + nAdd - nSubtr;
 		int nToMove = nSamples - id2 - 1;
 		if (nAdd>nSubtr) UpdateBuffer(newLen);
 		bool *temp = new bool[nToMove*bufBlockSize];
 		memcpy(temp, logbuf+(id2+1)*bufBlockSize, nToMove*bufBlockSize);
-		memcpy(logbuf+id1*bufBlockSize, sec.buf, sec.nSamples*bufBlockSize);
-		memcpy(logbuf+(id1+sec.nSamples)*bufBlockSize, temp, nToMove*bufBlockSize);
+		memcpy(logbuf+id1*bufBlockSize, sec.buf, secnsamples*bufBlockSize);
+		memcpy(logbuf+(id1+secnsamples)*bufBlockSize, temp, nToMove*bufBlockSize);
 		delete[] temp;
 		nSamples = newLen;
 	}
@@ -556,36 +577,73 @@ body &body::Max(double crit)
 	return *this;
 }
 
-double body::Max(int &id)
+template <class T>
+T maxarray(int &id, T *buf, int len)
 {
-	if (bufBlockSize==1) // logical
-	{
-		for (int k(0); k<nSamples; k++)
-			if (logbuf[k]) return 1.;
-		return 0.;
-	}
-	double localMax(-1.e100);
-	for (int i=0; i<nSamples; i++)
-	{	if (buf[i] > localMax)
-		{	localMax = buf[i];			id=i+1; } // one-based index
-	}
+	T local;
+	char ctemp(0);
+	double dtemp(-1.e100);
+	if (sizeof(T)==1)
+		memcpy(&local, &ctemp, sizeof(T)); 
+	else			
+		memcpy(&local, &dtemp, sizeof(T)); 
+	for (int k=0; k<len; k++)
+		if (buf[k] > local)
+			{	local = buf[k];	id=k+1;		} // one-based index
 	return buf[id-1];
 }
 
-double body::Min(int &id)
+template <class T>
+T minarray(int &id, T *buf, int len)
 {
+	T local;
+	unsigned char ctemp(255);
+	double dtemp(1.e100);
+	if (sizeof(T)==1)
+		memcpy(&local, &ctemp, sizeof(T)); 
+	else			
+		memcpy(&local, &dtemp, sizeof(T)); 
+	for (int k=0; k<len; k++) 
+		if (buf[k] < local)
+			{	local = buf[k];	id=k+1;		} // one-based index
+	return buf[id-1];
+}
+
+double body::Max(int &id, int len)
+{
+	int k(0);
+	bool shouldbestring(false);
+	if (len==-1) len = nSamples;
 	if (bufBlockSize==1) // logical
 	{
-		for (int k(0); k<nSamples; k++)
-			if (!logbuf[k]) return 0.;
-		return 1.;
+		do {
+			if ((char)logbuf[k]>=' ') shouldbestring = true;
+			if (logbuf[k]) 
+			{id=k; return 1.;}
+		} while (k++<len-1 && !shouldbestring);
+		if (shouldbestring)
+			return maxarray(id, (unsigned char*)strbuf, len);
+		if (k==len) return 0.;
 	}
-	double localMin(1.e100);
-	for (int i=0; i<nSamples; i++)
-	{	if (buf[i] < localMin)
-		{	localMin = buf[i];	id=i+1;		} // one-based index
+	return maxarray(id, buf, len);
+}
+
+double body::Min(int &id, int len)
+{
+	int k(0);
+	bool shouldbestring(false);
+	if (len==-1) len = nSamples;
+	if (bufBlockSize==1) // logical
+	{
+		do {
+			if ((char)logbuf[k]>=' ') shouldbestring = true;
+			if (!logbuf[k]) {id=k; return 0.;}
+		} while (k++<len && !shouldbestring);
+		if (shouldbestring)
+			return minarray(id, (unsigned char*)strbuf, len);
+		if (k==len) return 1.;
 	}
-	return buf[id-1];
+	return minarray(id, buf, len);
 }
 
 CSignal::CSignal()
@@ -596,6 +654,7 @@ CSignal::CSignal()
 CSignal::CSignal(int sampleRate)
 :fs(max(sampleRate,1)), chain(NULL), tmark(0.)
 {
+	if (fs==2) bufBlockSize=1;
 }
 
 CSignal::CSignal(double value)
@@ -747,11 +806,14 @@ EXP_CS CSignal& CSignal::operator+=(CSignal &sec)
 		else
 		{
 			for (CSignal *p=this; p; p=p->chain)
-				for (int k=0; k<p->nSamples; k++)
-					p->buf[k] += sec.buf[0];
+				if (p->IsString()) for (int k=0; k<p->length(); k++)	p->strbuf[k] += INT(sec.value());
+				else				for (int k=0; k<p->nSamples; k++)	p->buf[k] += sec.buf[0];
 		}
 	} else	/* now for two vectors */ 
+	{
+		if (sec.IsString() || IsString()) throw "Addition of string is allowed only with a scalar.";
 		AddMultChain( '+', &sec ); 
+	}
 	return *this; 
 } 
 
@@ -2273,33 +2335,32 @@ EXP_CS std::string CSignal::string()
 	int k;
 	std::string out;
 	out.resize(nSamples);
-	for (k=0; k<nSamples && (char*)buf+k; k++)
-		out[k] = *((char*)buf+k);
+	for (k=0; k<nSamples && strbuf[k]; k++)
+		out[k] = *(strbuf+k);
 	out.resize(k);
 	return out;
 }
 
 EXP_CS char *CSignal::getString(char *str, const int size)
 {
-	int i;
-	for (i=0; i<nSamples && i<size-1; ++i)
-		str[i] = strbuf[i];
-	str[i] = '\0';
+	memcpy(str, strbuf, min(nSamples, size-1));
+	str[ min(nSamples, size-1) ] = '\0';
 	return str;
 }
 
 EXP_CS CSignal &CSignal::SetString(const char *str)
 {
 	Reset(2);
-	UpdateBuffer((int)strlen(str));
+	bufBlockSize = 1;
+	UpdateBuffer((int)strlen(str)+1);
 	strcpy(strbuf, str);
-	nSamples = (int)strlen(str);
 	return *this;
 }
 
 EXP_CS CSignal &CSignal::SetString(const char c)
 {
 	Reset(2);
+	bufBlockSize = 1;
 	if (c==0) return *this;
 	UpdateBuffer(2);
 	memset(strbuf, 0, 2);

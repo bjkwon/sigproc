@@ -26,6 +26,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
 }
 #endif
 
+//DO NOT USE THIS MACRO for a negative input*********
+#define INT(X) (int)(X+.5)
+
 #ifdef _WINDOWS
 #define GetTickCount0 GetTickCount
 #else if
@@ -288,20 +291,17 @@ bool CAstSig::isReplica(AstNode *pnode)
 bool CAstSig::isContiguous(body &ind, int &begin, int &end)
 { // in out out
 	bool contig(true);
-	int id, id0 = (int)(ind.buf[0]+.5);
-	int diff = (int)(ind.buf[1]+.5) - id0;
+	double id, id0(ind.buf[0]);
+	double diff = ind.buf[1] - id0;
 	for (int k=1; k<ind.nSamples && contig; k++)
 	{
-		id = (int)(ind.buf[k]+.5);
-		if (id-id0 != diff || diff!=1 && diff!=-1)
+		id = ind.buf[k];
+		if (id-id0 != diff || diff!=1. && diff!=-1.)
 			contig = false;
 		id0 = id;
 	}
-	if (contig)
-	{
-		if (diff>0) begin = (int)(ind.buf[0]+.5), end = (int)(ind.buf[ind.nSamples-1]+.5);
-		else	end = (int)(ind.buf[0]+.5), begin = (int)(ind.buf[ind.nSamples-1]+.5);
-	}
+	if (diff>0) begin =  INT(ind.buf[0]), end =  INT(ind.buf[ind.nSamples-1]);
+	else	end =  INT(ind.buf[0]), begin =  INT(ind.buf[ind.nSamples-1]);
 	return contig;
 }
 
@@ -310,12 +310,34 @@ CSignals &CAstSig::extract(CSignal &in, body &isig)
 {
 	CSignal out(in.GetFs());
 	out.UpdateBuffer(isig.nSamples);
-	int id;
-	for (int k=0; k<isig.nSamples; k++)
+	//CSignal::Min() makes a vector
+	//body::Min() makes a scalar.
+	if (((body)isig).Min()<=0.) throw "index must be positive.";
+	if (((body)isig).Max()>in.nSamples) throw "index out of range.";
+	if (in.IsComplex()) 
 	{
-		id = (int)(isig.buf[k]+.5);
-		if (id<0) throw "index cannot be negative.";
-		out.buf[k]=in.buf[id-1];
+		out.SetComplex();
+		for (int i=0; i<isig.nSamples; i++)
+			out.cbuf[i] = in.cbuf[INT(isig.buf[i])-1];
+	}
+	else if (in.IsLogical())
+	{
+		out.MakeLogical();
+		for (int i=0; i<isig.nSamples; i++)
+			out.logbuf[i] = in.logbuf[INT(isig.buf[i])-1];
+	}
+	else if (in.IsString())
+	{
+		out.UpdateBuffer(isig.nSamples+1); // make room for null 
+		for (int i=0; i<isig.nSamples; i++)
+			out.strbuf[i] = in.strbuf[INT(isig.buf[i])-1];
+		out.strbuf[out.nSamples-1]=0;
+	}
+	else
+	{
+		out.SetReal();
+		for (int i=0; i<isig.nSamples; i++)
+			out.buf[i]=in.buf[INT(isig.buf[i])-1];
 	}
 	return (Sig=out);
 }
@@ -386,6 +408,14 @@ CSignals &CAstSig::getlhs(const AstNode *pnode, CSignal *inout, CSignals &indsig
 	return (Sig=out);
 }
 
+
+bool CAstSig::checkcond(const AstNode *p)
+{
+	Compute(p);
+	if (!Sig.IsScalar())	throw CAstException(p, "--conditional op requires a scalar.");
+	if (Sig.IsLogical()) return Sig.logbuf[0];
+	else				return !(Compute(p).value()==0.);
+}
 
 void CAstSig::checkindexrange(const AstNode *pnode, CSignal *inout, int id, string errstr)
 {
@@ -514,7 +544,6 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 CSignals &CAstSig::Compute(const AstNode *pnode)
 {
 	int count(0);
-	int mn, mx;
 	CSignals tsig, isig, *psig, lsig, rsig;
 	CSignals rms, rms2;
 	bool check, trinary(false);
@@ -732,8 +761,8 @@ try {
 		blockCell(pnode,  Sig);
 		rsig = Compute(p->next); 
 		Compute(p); 
-		if ( (pnode->type==T_LOGIC_AND || pnode->type==T_LOGIC_OR) && (!Sig.IsLogical() || !rsig.IsLogical()) ) 
-			throw "Logical operation is only for logical arrays.";
+//		if ( (pnode->type==T_LOGIC_AND || pnode->type==T_LOGIC_OR) && (!Sig.IsLogical() || !rsig.IsLogical()) ) 
+//			throw "Logical operation is only for logical arrays.";
 		Sig.LogOp(rsig,pnode->type);
 		break;
 	case T_LOGIC_NOT:
@@ -747,14 +776,7 @@ try {
 		break;
 	case T_IF:
 		for (; p && p->next; p=p->next->next)	// p is a condition of 'if' or 'elseif', p->next is the code block.
-		{
-			Compute(p);
-			if (Sig.IsLogical())
-			{	if (Sig.logbuf[0])		return Compute(p->next);	}
-			else
-			{	if (Compute(p).value())	return Compute(p->next);	}
-			// no further processing of this 'if' statement.
-		}
+			if (checkcond(p))	return Compute(p->next);	
 		// now p is at the end of 'if' statement, without executing any conditional code.
 		if (p)	// if not null, it's the 'else' code block
 			Compute(p);
@@ -774,18 +796,15 @@ try {
 		break;
 	case T_WHILE:
 		fExit=fBreak=false;
-		{
-		double ss = Compute(p).value();
-		while (Compute(p).value() && !fExit && !fBreak)
+		for (; checkcond(p) && !fExit && !fBreak ;)
 			Compute(p->next);
 		fBreak = false;
-		}
 		break;
 	case T_FOR:
 		fExit=fBreak=false;
-		tsig = Compute(p->child);
-		for (int i=0; i<tsig.nSamples && !fExit && !fBreak; i++) {
-			SetTag(p->str, CSignals(tsig.buf[i]));
+		isig = Compute(p->child);
+		for (int i=0; i<isig.nSamples && !fExit && !fBreak; i++) {
+			SetTag(p->str, CSignals(isig.buf[i]));
 			Compute(p->next);
 		}
 		fBreak = false;
@@ -954,36 +973,8 @@ try {
 			}
 			else
 			{
-				pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
-				pAst_context->type = T_ID;
-				pAst_context->str = (char*)malloc(strlen(pnode->str)+1);
-
-				strcpy(pAst_context->str, pnode->str);
 				// Extraction by indices
-				isig = Compute(p);
-				//yydeleteAstNode(pAst_context, 0);
-				//pAst_context=NULL;
-
-				mn = round(((body)isig).Min());
-				mx = round(((body)isig).Max());
-				if (mn < 1)
-					throw CAstException(p, "Index cannot be smaller than 1.");
-				if (mx > psig->nSamples)
-					throw CAstException(p, "Index exceeds size of vector.");
-				Sig.UpdateBuffer(isig.nSamples);
-				if (psig->bufBlockSize==2) 
-				{
-					Sig.SetComplex();
-					for (int i=0; i<isig.nSamples; i++)
-						Sig.cbuf[i] = psig->cbuf[round(isig.buf[i])-1];	// -1 for one-based indexing
-				}
-				else
-				{
-					Sig.SetReal();
-					Sig.SetFs(psig->GetFs());
-					for (int i=0; i<isig.nSamples; i++)
-						Sig.buf[i] = psig->buf[round(isig.buf[i])-1];	// -1 for one-based indexing
-				}
+				extract(*psig, isig);
 			}
 			break;
 		} else if (AstNode *pUDF=RetrieveUDF(pnode->str)) {

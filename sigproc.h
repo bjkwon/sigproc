@@ -85,6 +85,7 @@ public:
 	EXP_CS complex<double> cvalue() const;
 	void SetValue(double v);
 	void SetValue(complex<double> v);
+	bool isstring();
 	EXP_CS void SetComplex();
 	EXP_CS void SetReal();
 	EXP_CS bool IsComplex() const  { return (bufBlockSize==2*sizeof(double)); } 
@@ -106,9 +107,9 @@ public:
 	body &replace(body &sec, body &index);
 
 	EXP_CS double Sum();
-	EXP_CS double Min(int  &id);
+	EXP_CS double Min(int  &id, int len=-1);
 	EXP_CS double Min() {int id; return Min(id);}
-	EXP_CS double Max(int  &id);
+	EXP_CS double Max(int  &id, int len=-1);
 	EXP_CS double Max() {int id; return Max(id);}
 	EXP_CS double Mean() {return Sum()/(double)nSamples;}
 	EXP_CS body &Min(double crit);
@@ -229,7 +230,7 @@ public:
 	EXP_CS bool IsEmpty() const {return (GetType() == CSIG_EMPTY);}
 	EXP_CS bool IsSingle() const {return ( (GetType() == CSIG_SCALAR || GetType() == CSIG_COMPLEX || GetType() == CSIG_STRING) && nSamples==1);}
 	EXP_CS bool IsString() const {return (fs == 2);}
-	EXP_CS bool IsLogical() const {return (bufBlockSize==1);} // logical can be either audio or non-audio, so GetType() of logical array will not tell you whether that's logical or not.
+	EXP_CS bool IsLogical() const {return (bufBlockSize==1 && fs != 2);} // logical can be either audio or non-audio, so GetType() of logical array will not tell you whether that's logical or not.
 	EXP_CS bool IsComplex() const  { return (bufBlockSize==2*sizeof(double)); } 
 	EXP_CS int IsNull(double timept);
 	EXP_CS CSignal& Insert(double timept, CSignal &newchunk);
@@ -429,6 +430,7 @@ private:
 	bool isContiguous(body &id, int &begin, int &end);
 	bool isReplica(AstNode *pnode);
 	CSignals &extract(CSignal &Sig, body &isig);
+	bool checkcond(const AstNode *p);
 public:
 	CSignals Sig;
 	string statusMsg;
