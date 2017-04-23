@@ -428,7 +428,7 @@ private:
 	CAstSig &insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig);
 	void checkindexrange(const AstNode *pnode, CSignal *inout, int id, string errstr);
 	bool isContiguous(body &id, int &begin, int &end);
-	bool isReplica(AstNode *pnode);
+	bool isnodetypedown(AstNode *pnode, int type);
 	CSignals &extract(CSignal &Sig, body &isig);
 	bool checkcond(const AstNode *p);
 public:

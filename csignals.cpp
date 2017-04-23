@@ -1217,11 +1217,11 @@ EXP_CS double CSignal::RMS()
 { // This does not go into next.... for stereo signals, call RMS specifically, like next->RMS()  bjk 4/23/2016
 	double cum(0);
 	int count(0);
-	for (CSignal *p=this; p; p=p->chain)
+	CSignal *p(this);
+	for (; p; p=p->chain)
 	{
 		for (int i=0; i<p->nSamples; ++i, ++count) 
 			cum += p->buf[i] * p->buf[i];
-		int jj=40;
 	}
 	return _getdB(sqrt(cum/count));
 }
@@ -1261,12 +1261,26 @@ EXP_CS CSignal& CSignal::Take(CSignal& out, double begin_ms)
 
 EXP_CS CSignal& CSignal::Take(CSignal& out, int id1, int id2)
 {
-	id2 = min (nSamples, id2);
-	if (id2<id1)		return *this;
 	out.Reset();
-	int nSamplesNeeded = id2-id1+1;
-	out.UpdateBuffer(nSamplesNeeded);
-	memcpy((void*)&out.buf[-min(0,id1)], (void*)&buf[max(0,id1)], sizeof(double)*(id2-max(0,id1)+1));
+	if (id2<id1)		// Time reversal
+	{
+		if (id2>nSamples-1) return *this;
+		id1 = min (nSamples-1, id1);
+		id2 = max (0, id2);
+		int nSamplesNeeded = id1-id2+1;
+		out.UpdateBuffer(nSamplesNeeded);
+		for (int k=0; k<nSamplesNeeded; k++)
+			out.buf[k] = buf[id1-k];
+	}
+	else
+	{
+		if (id1>nSamples-1) return *this;
+		id1 = max (0, id1);
+		id2 = min (nSamples-1, id2);
+		int nSamplesNeeded = id2-id1+1;
+		out.UpdateBuffer(nSamplesNeeded);
+		memcpy((void*)&out.buf[-min(0,id1)], (void*)&buf[max(0,id1)], sizeof(double)*(id2-max(0,id1)+1));
+	}
 	return out;
 }
 
@@ -1278,8 +1292,9 @@ EXP_CS CSignal& CSignal::Take(CSignal& out, double begin_ms, double end_ms)
 // Error will occur in one of the following:
 	1) when id2 is the same or smaller than id1.
 */
-	int id1 = round(begin_ms/1000.*fs);
-	int id2 = round(end_ms/1000.*fs)-1;
+	//these indices are inclusive of time points but "fix" of sample time grid 4/23/2017 bjk
+	int id1 = (int)(begin_ms/1000.*fs);
+	int id2 = (int)(end_ms/1000.*fs);
 	Take(out, id1, id2);
 	return out;
 }
@@ -1923,7 +1938,7 @@ EXP_CS double * CSignal::Truncate(int id1, int id2, int code)
 	}
 	if (id2>nSamples-1) id2 = nSamples-1;
 	nSamples = max(0,id2-id1+1);
-	memmove(buf, logbuf+id1, nSamples*bufBlockSize);
+	memmove(buf, logbuf+id1*bufBlockSize, nSamples*bufBlockSize);
 	return buf;
 }
 

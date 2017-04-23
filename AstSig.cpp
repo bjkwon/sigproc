@@ -277,12 +277,12 @@ void AddConditionMeetingBlockAsChain(CSignals *Sig, CSignal *psig, int iBegin, i
 	else					Sig->AddChain(part);
 }
 
-bool CAstSig::isReplica(AstNode *pnode)
+bool CAstSig::isnodetypedown(AstNode *pnode, int type)
 {
 	AstNode *p = pnode->child;
 	for (; p; p=p->next)
 	{
-		if (p->type==T_REPLICA)
+		if (p->type==type)
 			return true;
 	}
 	return false;
@@ -357,7 +357,7 @@ CSignals &CAstSig::getlhs(const AstNode *pnode, CSignal *inout, CSignals &indsig
 			int id1, id2;
 			if (inout->GetType()==CSIG_AUDIO) 
 			{
-				bool ch = isReplica(pnode->child);
+				bool ch = isnodetypedown(pnode->child, T_REPLICA);
 				if (p->type==NODE_IDLIST || (p->next && p->next->type==NODE_IDLIST) )
 			               // s(tp1~tp2)   or  cel{n}(tp1~tp2)
 					inout->Take(out, indsig.buf[0], indsig.buf[1]);
@@ -465,7 +465,7 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 			int id1, id2;
 			if (inout->GetType()==CSIG_AUDIO) 
 			{
-				bool ch = isReplica(pnode->child);
+				bool ch = isnodetypedown(pnode->child, T_REPLICA);
 				if (p->type==NODE_IDLIST || (p->next && p->next->type==NODE_IDLIST) )
 			               // s(tp1~tp2)   or  cel{n}(tp1~tp2)
 					inout->Replace(sec, indsig.buf[0], indsig.buf[1]);
@@ -590,7 +590,7 @@ try {
 	case '=':
 		if (!p)	throw CAstException(pnode, "Internal error: Empty assignment!");
 		// if there's a 292 node (REPLICA) down in p, do something (here, NODE_INITCELL and NODE_IXASSIGN)
-		if (isReplica(p))
+		if (isnodetypedown(p, T_REPLICA))
 		{
 			if ((psig = RetrieveTag(pnode->str)))
 				replica = *psig;
@@ -632,13 +632,13 @@ try {
 					isig = Compute(pnode->childLHS->next); // should be scalar, T_ID, or p:q (but no p:r:q)
 					// if cell{n}(tp1~tp2), pnode->next->next->type is NODE_IDLIST
 					// if cell{n}(id1:id2), pnode->next->next->type is NODE_CALL 
-					if (isReplica(p))	replica = getlhs(pnode, cellsig, isig);
+					if (isnodetypedown(p, T_REPLICA))	replica = getlhs(pnode, cellsig, isig);
 					// rhs compute should be done after replica is ready
 					insertreplace(pnode, cellsig, tsig, isig);
 					tsig = *cellsig;
 				}
 				else
-					if (isReplica(p))	replica = *cellsig;
+					if (isnodetypedown(p, T_REPLICA))	replica = *cellsig;
 				SetCell(pnode->str, id, tsig);
 			}
 		}
@@ -880,8 +880,18 @@ try {
 	case NODE_EXTRACT:
 		psig = RetrieveTag(p->str);
 		if (!psig) throw CAstException(pnode, "variable not available.");
+		checkAudioSig(pnode,  *psig);
+		if (isnodetypedown(p, T_DUR))
+		{
+			pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
+			pAst_context->type = T_ID;
+			pAst_context->str = (char*)malloc(strlen(pnode->child->str)+1);
+			strcpy(pAst_context->str, pnode->child->str);
+		}
 		isig = Compute(p->next);
 		isig += &Compute(p->next->next);
+		if (isnodetypedown(p, T_DUR))
+			yydeleteAstNode(pAst_context, 0), pAst_context=NULL;
 		Sig = getlhs(pnode, psig, isig);
 		break;
 	case NODE_IDLIST:
@@ -907,7 +917,7 @@ try {
 		//else if (!check && !(p->next && p->next->child && !p->next->child->next))
 		//	throw CAstException(pnode, "Indexed assignment must have one argument.");
 
-		if (isReplica(p))
+		if (isnodetypedown(p, T_REPLICA))
 			replica = getlhs(pnode, psig, isig);
 		//rhs compute should be done after replica is ready
 		tsig = Compute(p); // rhs
@@ -927,7 +937,17 @@ try {
 	case NODE_CALL: // built-in function calls come here
 		if (p && !p->next /* only one argument */ && (psig = RetrieveTag(pnode->str))) {
 			if (psig->GetType()==CSIG_CELL) throw CAstException(p, "A cell array cannot be accessed with ( ).");
+			if (isnodetypedown(p, T_LENGTH))
+			{
+				pAst_context = (AstNode*)calloc(1, sizeof(AstNode));
+				pAst_context->type = T_ID;
+				pAst_context->str = (char*)malloc(strlen(pnode->str)+1);
+				strcpy(pAst_context->str, pnode->str);
+			}
 			isig = Compute(p);
+			if (isnodetypedown(p, T_LENGTH))
+				yydeleteAstNode(pAst_context, 0), pAst_context=NULL;
+
 			if (isig.IsLogical()) // This means conditional indexing
 			{
 				Sig.Reset(psig->GetFs());

@@ -357,15 +357,15 @@ int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname,
 		out.UpdateBuffer(4);
 		switch(hobj->type)
 		{
+		HWND hDlg;
+		RECT rt;
+		int monitorH;
 		case 'f':
-			{
-			HWND hDlg = fp_GetHWND_PlotDlg(hobj);
-			RECT rt;
+			hDlg = hobj->m_dlg->hDlg;
 			GetWindowRect(hDlg, &rt);
-			int monitorH = getmonitorheight (hDlg);
+			monitorH = getmonitorheight (hDlg);
 			out.buf[0] = rt.left;			out.buf[1] = monitorH - rt.bottom;
 			out.buf[2] = rt.right-rt.left;	out.buf[3] = rt.bottom - rt.top;
-			}
 			break;
 		case 't':
 			out.UpdateBuffer(2);
