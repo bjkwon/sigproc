@@ -750,8 +750,8 @@ try {
 	case T_LOGIC_OR:
 	case T_LOGIC_AND:
 		tsig = Compute(p); 
-		if (pnode->type==T_LOGIC_OR && Sig.logbuf[0]) return Sig;
-		if (pnode->type==T_LOGIC_AND && !Sig.logbuf[0]) return Sig;
+		if (pnode->type==T_LOGIC_OR && Sig.nSamples==1 && Sig.logbuf[0]) return Sig;
+		if (pnode->type==T_LOGIC_AND && Sig.nSamples==1 && !Sig.logbuf[0]) return Sig;
 	case '<':
 	case '>':
 	case T_COMP_LE:

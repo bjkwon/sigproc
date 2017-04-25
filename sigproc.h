@@ -19,15 +19,14 @@
 #define EXP_CS
 #endif
 
-#define CSIG_TYPEERROR	0
+#define CSIG_EMPTY		0
 #define CSIG_STRING		1
-#define CSIG_EMPTY		2
-#define CSIG_NULL		3
+#define CSIG_NULL		2
 #define CSIG_SCALAR		4
-#define CSIG_AUDIO		5
-#define CSIG_VECTOR		6
-#define CSIG_CELL		7
-#define CSIG_COMPLEX	8
+#define CSIG_CELL		8
+#define CSIG_VECTOR		17
+#define CSIG_COMPLEX	19
+#define CSIG_AUDIO		65
 
 
 #ifdef _WINDOWS
@@ -209,6 +208,7 @@ public:
 
 	// Retrieve signal characteristics (single channel ONLY)
 	EXP_CS int GetType() const; 
+	EXP_CS int GetTypePlus() const;
 	vector<double> Sum();
 	vector<double> Mean();
 	vector<int> MinId();
@@ -286,7 +286,7 @@ public:
 
 	EXP_CS CSignals();
 	EXP_CS CSignals(int  sampleRate);
-	EXP_CS CSignals(FILE* fp);
+//	EXP_CS CSignals(FILE* fp);
 	EXP_CS CSignals(double value);
 	EXP_CS CSignals(double *y, int  len);
 	EXP_CS CSignals(const CSignal& src);
@@ -307,7 +307,7 @@ public:
 	EXP_CS void SetValue(double v);
 	EXP_CS void SetValue(complex<double> v);	
 
-	EXP_CS int ReadAXL(FILE* fp);
+	EXP_CS int ReadAXL(FILE* fp, bool logical);
 	EXP_CS int WriteAXL(FILE* fp);
 
 	EXP_CS int GetType() const;

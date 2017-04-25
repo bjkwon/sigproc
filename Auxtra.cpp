@@ -17,6 +17,8 @@ extern HWND hAppl;
 HANDLE plotline;
 HANDLE mutex;
 uintptr_t hTread;
+bool win7;
+
 
 AUDFRET_EXP void ReplaceStr(string &str, const char *from, const char *to) { ReplaceStr(str, string(from), string(to)); }
 
@@ -33,6 +35,7 @@ void blockScalar(const AstNode *pnode, CSignals &checkthis);
 void blockString(const AstNode *pnode, CSignals &checkthis);
 void blockComplex(const AstNode *pnode, CSignals &checkthis);
 void checkString(const AstNode *pnode, CSignals &checkthis, string addmsg);
+bool isWin7();
 
 typedef  void (_cdecl  *PFUN_DEL) (HANDLE h);
 typedef  HANDLE  (_cdecl *PFUN_OPEN) (RECT*, HWND, int, double);
@@ -150,6 +153,7 @@ void initGraffyProperties()
 	graffyprop.insert(make_pair('l',string("linestyle")));
 	graffyprop.insert(make_pair('l',string("linewidth")));
 
+	win7 = isWin7();
 }
 
 void GetLineStyle (LineStyle out, string &in)
@@ -905,7 +909,7 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	in.lineSpecifer = args.back().string();
 	CSignals gcf;
 	CRect rt(0, 0, 500, 310);
-	HANDLE fig = OpenGraffy(rt, "", GetCurrentThreadId(), GetHWND_SIGPROC(), in);
+	HANDLE fig = OpenGraffy(rt, "", GetCurrentThreadId(), win7 ? NULL:GetHWND_SIGPROC(), in);
 	HANDLE ax = AddAxis (fig, .08, .18, .86, .72);
 	CAxis *cax = static_cast<CAxis *>(ax);
 
@@ -934,11 +938,18 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		plotline = fp_PlotCSignals2(ax, first, second, col, marker, linestyle); 
 		break;
 	}
+	//update gcf here
+	GetFigID(fig, gcf);
+	ast.SetTag("gcf", gcf);
+
 	HWND h  = GetHWND_SIGPROC();
 	PostMessage(h, WM__PLOTDLG_CREATED, (WPARAM)"", (LPARAM)&in);
 	CFigure *cfig = static_cast<CFigure *>(fig);
 
 	ast.Sig.SetValue((double)(int)plotline);
+
+
+
 }
 
 #endif

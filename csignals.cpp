@@ -2009,6 +2009,15 @@ int CSignal::GetType() const
 		return CSIG_VECTOR;
 }
 
+int CSignal::GetTypePlus() const
+{
+	int res = GetType();
+	if (res==CSIG_VECTOR || res==CSIG_AUDIO)
+		return res - (int)(bufBlockSize==1);
+	else 
+		return res;
+}
+
 vector<double> CSignal::Sum()
 {
 	vector<double> out ;
@@ -2510,7 +2519,7 @@ int CSignal::WriteAXL(FILE* fp)
 	{
 		res = fwrite((void*)&p->nSamples, sizeof(nSamples),1,fp);
 		res = fwrite((void*)&p->tmark, sizeof(tmark),1,fp);
-		res = fwrite((void*)p->buf, sizeof(double),p->nSamples,fp);
+		res = fwrite((void*)p->buf, p->bufBlockSize,p->nSamples,fp);
 	}
 	return (int)res;
 }
@@ -2563,11 +2572,11 @@ EXP_CS CSignals::CSignals(double *y, int len)
 	memcpy(buf, y, sizeof(double)*len);
 }
 
-EXP_CS CSignals::CSignals(FILE* fp)
-:next(NULL)
-{
-	ReadAXL(fp);
-}
+//EXP_CS CSignals::CSignals(FILE* fp)
+//:next(NULL)
+//{
+//	ReadAXL(fp);
+//}
 
 EXP_CS CSignals::~CSignals()
 {
@@ -3204,27 +3213,28 @@ EXP_CS int CSignals::GetType() const
 		return CSignal::GetType();
 }
 
-EXP_CS int CSignals::ReadAXL(FILE* fp)
+EXP_CS int CSignals::ReadAXL(FILE* fp, bool logical)
 {
 	size_t res;
 	int res2, nChains;
-	res = fread((void*)&fs, sizeof(fs),1,fp);
+	res = fread((void*)&fs, sizeof(fs), 1, fp);
 	res2 = ftell(fp);
 	Reset(fs);
-	res = fread((void*)&nChains, sizeof(nChains),1,fp);
+	res = fread((void*)&nChains, sizeof(nChains), 1, fp);
 	res2 = ftell(fp);
 	for (int k=0; k<nChains; k++)
 	{
 		int cum(0), _nSamples;
 		CSignal readsig(fs);
-		res = fread((void*)&_nSamples, sizeof(nSamples),1,fp); // readsig.nSamples shouldn't be directly modified, it should be done inside UpdateBuffer()
+		res = fread((void*)&_nSamples, sizeof(nSamples), 1, fp); // readsig.nSamples shouldn't be directly modified, it should be done inside UpdateBuffer()
 		res2 = ftell(fp);
 		readsig.UpdateBuffer(_nSamples);
-		res = fread((void*)&readsig.tmark, sizeof(tmark),1,fp);
+		if (logical) readsig.MakeLogical();
+		res = fread((void*)&readsig.tmark, sizeof(tmark), 1, fp);
 		res2 = ftell(fp);
 		while(cum<readsig.nSamples)
 		{
-			res = fread((void*)&readsig.buf[cum], sizeof(double),readsig.nSamples-cum,fp);
+			res = fread((void*)&readsig.logbuf[cum], readsig.bufBlockSize, readsig.nSamples-cum, fp);
 			cum += (int)res;
 		}
 		AddChain(readsig);
