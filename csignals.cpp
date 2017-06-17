@@ -835,9 +835,16 @@ EXP_CS CSignal& CSignal::operator*=(CSignal &sec)
 		}
 		else
 		{
+			double val = sec.value();
 			for (CSignal *p=this; p; p=p->chain)
-				for (int k=0; k<p->nSamples; k++)
-					p->buf[k] *= sec.buf[0];
+			{
+				if (bufBlockSize==1)
+					for (int k=0; k<p->nSamples; k++) 
+						p->strbuf[k] = (unsigned char)((double)p->strbuf[k] * val);
+				else
+					for (int k=0; k<p->nSamples; k++) 
+						p->buf[k] *= val;
+			}
 		}
 	} else	/* now for two vectors */ 
 		AddMultChain( '*', &sec ); 

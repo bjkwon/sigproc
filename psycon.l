@@ -50,10 +50,7 @@ NUM	[[:digit:]]+"."?[[:digit:]]*([eE][+-]?[[:digit:]]+)?|"."[[:digit:]]+
 	yylval.dval = strtod(yytext, NULL);
 	return T_NUMBER;
 	}
-<PARENTH>fP {
-	yylloc.last_column += yyleng;
-	return getTokenID(yytext);
-	}
+
 <BRACKET>\] {	/* closing bracket */
 	yylloc.last_column += yyleng;
 	yy_pop_state();
@@ -64,9 +61,9 @@ NUM	[[:digit:]]+"."?[[:digit:]]*([eE][+-]?[[:digit:]]+)?|"."[[:digit:]]+
 	yy_push_state(PARENTH);
 	return (unsigned char)yytext[0];
 	}
-<PARENTH>fT {
+<PARENTH>end {
 	yylloc.last_column += yyleng;
-	return getTokenID(yytext);
+	return T_ENDPOINT;
 	}
 <PARENTH>\) {	/* closing parenthesis */
 	yylloc.last_column += yyleng;
@@ -83,7 +80,7 @@ NUM	[[:digit:]]+"."?[[:digit:]]*([eE][+-]?[[:digit:]]+)?|"."[[:digit:]]+
 	yy_pop_state();
 	return (unsigned char)yytext[0];
 	}
-if|else|elseif|end|while|for|break|continue|switch|case|otherwise|function|endfunction|return|sigma|"=="|"!="|"<="|">="|">>"|"<<"|"&&"|"||"|"++"|"+="|"-="|"*="|"/="|"^="|"@="|"@@="|".."  {
+if|else|elseif|end|while|for|break|continue|switch|case|otherwise|function|endfunction|return|sigma|"=="|"!="|"<="|">="|">>"|"<<"|"&&"|"||"|"++"|"+="|"-="|"*="|"/="|"^="|"@="|"@@="|"++="|".."  {
 	yylloc.last_column += yyleng;
 	return getTokenID(yytext);
 	}

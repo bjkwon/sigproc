@@ -27,6 +27,7 @@ void blockCell(const AstNode *pnode, CSignals &checkthis);
 
 #ifndef AUX_NO_EXTRA
 void aux_text(CAstSig &ast, const AstNode *pnode, const AstNode *p);
+void aux_pause(CAstSig &ast, const AstNode *pnode, const AstNode *p);
 void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p);
 void aux_close(CAstSig &ast, const AstNode *pnode, const AstNode *p);
 void aux_delete(CAstSig &ast, const AstNode *pnode, const AstNode *p, CSignal *carry=NULL);
@@ -202,7 +203,7 @@ double aux_mod(const double numer, const double denom)
 
 void aux_diff(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
-	const char *fnsigs[] = {"(diff)", 0};
+	const char *fnsigs[] = {"(array)", 0};
 	checkNumArgs(pnode, p, fnsigs, 1, 1);
 	checkVector(pnode, ast.Sig);
 	ast.Compute(p); 
@@ -211,7 +212,7 @@ void aux_diff(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 
 void aux_cumsum(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
-	const char *fnsigs[] = {"(diff)", 0};
+	const char *fnsigs[] = {"(array)", 0};
 	checkNumArgs(pnode, p, fnsigs, 1, 1);
 	checkVector(pnode, ast.Sig);
 	ast.Compute(p); 
@@ -784,6 +785,22 @@ void aux_play(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	}
 }
 #endif // NO_PLAYSND
+
+void aux_cont(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	ast.Compute(p);
+
+}
+
+void aux_debug(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	const char *fnsigs[] = {
+		"()", 0};
+	checkNumArgs(pnode, p, fnsigs, 0, 0);
+	int nArgs(0), k(0);
+	for (const AstNode *cp=p; cp; cp=cp->next)
+		++nArgs;
+}
 
 void aux_show(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
@@ -1816,6 +1833,7 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	// extra functions for graffy
 #ifndef AUX_NO_EXTRA
 	else if (fname == "plot")		aux_plot(*this, pnode, p);
+	else if (fname == "pause")		aux_pause(*this, pnode, p);
 	else if (fname == "text")		aux_text(*this, pnode, p);
 	else if (fname == "close")		aux_close(*this, pnode, p);
 	else if (fname == "delete")		aux_delete(*this, pnode, p);
@@ -1829,6 +1847,8 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	else if (fname == "stop")	aux_playstop(*this, pnode, p);
 	else if (fname == "playloop")	aux_playloop(*this, pnode, p);
 #endif // NO_PLAYSND
+	else if (fname == "cont")		aux_cont(*this, pnode, p);
+	else if (fname == "debug")		aux_debug(*this, pnode, p);
 	else if (fname == "show")		aux_show(*this, pnode, p);
 	else if (fname == "HOOK" ||
 			 fname[0] == '#')		aux_HOOK(*this, pnode, p);

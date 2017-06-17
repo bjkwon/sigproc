@@ -57,10 +57,10 @@ public:
 	int nSamples;
 	union 
 	{
-		double *buf;
-		char *strbuf;
-		bool *logbuf;
 		complex<double> *cbuf;
+		char *strbuf;
+		double *buf;
+		bool *logbuf;
 	};
 	unsigned char bufBlockSize;
 
@@ -395,57 +395,69 @@ class CAstSigEnv
 {
 	friend class CAstSig;
 public:
-	CAstSigEnv(const int fs = 1);
-	~CAstSigEnv();
 	map<string,CSignals> Tags;
 	map<string,AstNode *> UDFs;
-	map<string,map<int,CSignals>> Arrays;  //soon to be deleted 4/23
+	map<string, vector<int>> DebugBreaks;
 	int Fs;
 	string AuxPath;
-private:
-	map<string,CSignals *> Refs; // used to store output arguments inside UDF
-	map<string,map<int,CSignals> *> ArrRefs; // where are these used??
-	set<string> NoAuxFiles; // where are these used??
-	int RefCount; // where are these used??
+
+	CAstSigEnv(const int fs = 1);
+	~CAstSigEnv();
+	int ClearVar(const char *var);
+	void EnumVar(vector<string> &var);
+	CSignals *GetSig(const char *var);
+	CAstSigEnv& CAstSigEnv::operator=(const CAstSigEnv& rhs);
+	void AddDelDebugging(string udfname, int add);
 };
 
 class CAstSig
 {
+public:
+	AstNode *pAst;
+	CSignals Sig;
+	string statusMsg;
+	CAstSigEnv *pEnv;
+	unsigned long Tick0, Tick1;
+	int beginLine, endLine, currentLine;
 private:
 	static const int DefaultFs = 22050;
-	AstNode *pAst;
-	AstNode *pAst_context;
 	string Script;
 	CSignals replica;
+	double endpoint;
 	bool fAllocatedAst, fExit, fBreak, fContinue;
+	CAstSig *sub;
+	AstNode *pLast;
+	const AstNode *pnodeLast;
+	int typeLast;
+
+private:
+	void debug(const CAstSig *debugAstSig, int debug_status, int line=-1);
+	void CAstSig::ddebug(CAstSig *debugAstSig);
 
 	void initGlobals(const CAstSig *env);
 	void HandleAuxFunctions(const AstNode *pnode);
-	CSignals &CallSub(const AstNode *pUDF, const AstNode *pCall);
-	map<int,CSignals> *RetrieveArray(const char *arrayname);
 	AstNode *RetrieveUDF(const char *fname);
 	CSignals &getlhs(const AstNode *pnode, CSignal *tagsig, CSignals &isig);
 	CAstSig &insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig);
 	void checkindexrange(const AstNode *pnode, CSignal *inout, int id, string errstr);
 	bool isContiguous(body &id, int &begin, int &end);
-	bool isnodetypedown(AstNode *pnode, int type);
+	bool searchtree(AstNode *pp, int type);
 	CSignals &extract(CSignal &Sig, body &isig);
 	bool checkcond(const AstNode *p);
+	AstNode *get_tree_on_line(const AstNode *pnode, int line);
+
 public:
-	CSignals Sig;
-	string statusMsg;
-	CAstSigEnv *pEnv;
-	unsigned long Tick0, Tick1;
+	void CallUDF(const AstNode *lhs, const char *lhsvar, const AstNode *rhs, bool debugging=false);
 	void (*CallbackCIPulse)(const AstNode *, CAstSig *);
 	int (*CallbackHook)(CAstSig &ast, const AstNode *pnode, const AstNode *p);
 	EXP_CS CSignals *RetrieveTag(const char *tagname);
 	EXP_CS CSignal *RetrieveCell(const char *cellvar, int id);
 
+	EXP_CS CAstSig(const int fs = DefaultFs);
     EXP_CS CAstSig(const CAstSig &org);
 	EXP_CS CAstSig(const CAstSig *env);
 	EXP_CS CAstSig(const char *str, const CAstSig *env);
 	EXP_CS CAstSig(AstNode *pNode, const CAstSig *env);
-	EXP_CS CAstSig(const int fs = DefaultFs);
 	EXP_CS CAstSig(const char *str, const int fs = DefaultFs);
 	EXP_CS CAstSig(AstNode *pNode, const int fs);
 	EXP_CS ~CAstSig();
@@ -460,7 +472,6 @@ public:
 	EXP_CS CSignals &GetTag(const char *name);
 	EXP_CS CAstSig &AddCell(const char *name, const CSignals &sig);
 	EXP_CS CAstSig &SetCell(const char *name, const unsigned int i, const CSignal &sig);
-	EXP_CS void SetRef(const char *ref, const char *var);
 	EXP_CS CAstSig &SetPath(const char *path);
 	EXP_CS CAstSig &AddPath(const char *path);
 	EXP_CS const char *GetPath() {return pEnv->AuxPath.c_str();}
@@ -473,7 +484,8 @@ public:
 	EXP_CS bool isInterrupted(void);
 
 	EXP_CS string MakeFilename(string fname, const string ext);
-	EXP_CS FILE *OpenFileInPath(string &fname, const string ext);
+	EXP_CS FILE *OpenFileInPath(string fname, const string ext);
+	EXP_CS AstNode *ReadUDF(const char *udf_filename, const AstNode *pnode);
 };
 
 

@@ -15,7 +15,7 @@ extern HWND hAppl;
 
 
 HANDLE plotline;
-HANDLE mutex;
+HANDLE hEvent;
 uintptr_t hTread;
 bool win7;
 
@@ -816,7 +816,7 @@ void aux_close(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 void aux_text(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 { // text (x, y, "string")
 	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, "Failed to load graffy.dll for plot");
-	const char *fnsigs[] = {"(figure ID(s) to delete)", 0};
+	const char *fnsigs[] = {"(x,  y, string)", 0};
 	checkNumArgs(pnode, p, fnsigs, 3, 3);
 	CSignals *gcf = ast.RetrieveTag("gcf");
 	if (gcf==NULL) 	throw CAstException(pnode, "gcf not ready (There is no plot window to draw text)");
@@ -839,7 +839,7 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	mainast = &ast;
 	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, "Failed to load graffy.dll for plot");
 	
-	if (mutex==NULL) mutex = CreateMutex(0, 0, 0);
+//	if (mutex==NULL) mutex = CreateMutex(0, 0, 0);
 //	dw = WaitForSingleObject(mutex, INFINITE);
 
 	// plot(audio), plot(x,y), plot(x,y,"specifiers") such as plot(x,y,"co:") (cyan, marker o, dotted line)
@@ -948,8 +948,35 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 
 	ast.Sig.SetValue((double)(int)plotline);
 
+//	if (mutex==NULL) mutex = CreateMutex(0, 0, 0);
+	if (hEvent==NULL) 	hEvent = CreateEvent(NULL, FALSE, FALSE, TEXT("AUXCONScriptEvent")); 
+}
 
-
+void aux_pause(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	DWORD res;
+	const char *fnsigs[] = {"(time_to_pause_in_ms)", 0};
+	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	CSignals sig = ast.Compute(p);
+	if (!sig.IsScalar()) 
+		throw CAstException(pnode, p->next, fnsigs, "Argument must be a scalar.");
+	if (sig.value()<0.)
+		throw CAstException(pnode, p->next, fnsigs, "Argument must be a positive value.");
+	else if (sig.value()>0.)
+		Sleep((DWORD)sig.value());
+	else // zero 
+	{
+		CSignals *gcf = ast.RetrieveTag("gcf");
+		if (gcf==NULL) 	throw CAstException(pnode, "(pause) gcf not ready (There is no plot window to draw text)");
+		HANDLE h = GCF(gcf);
+		HANDLE hText = AddText(h, "Press any key", .8, .95, 0, 0);
+		CFigure *fig = static_cast<CFigure *>(h);
+		CText *hTxt = static_cast<CText *>(hText);
+		hTxt->ChangeFont("Arial", 25);
+		fig->m_dlg->InvalidateRect(NULL);
+		res = WaitForSingleObject(hEvent, INFINITE);
+		fp_deleteObj(hText);
+	}
 }
 
 #endif
