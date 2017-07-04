@@ -32,7 +32,11 @@ typedef struct AstNode_t {
   char *str;
   struct AstNode_t *child;
   struct AstNode_t *alt;
+#ifndef CISIGPROC  
+  struct AstNode_t *tail;
+#else  
   struct AstNode_t *LastChild;
+#endif
   struct AstNode_t *next;
 } AstNode;
 

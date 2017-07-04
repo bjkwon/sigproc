@@ -1,0 +1,19 @@
+1) Add this near the top of yyparse()
+in yyparse()
+in psycon.tab.c
+
+   FILE* fpp;
+
+2) Add the followin code to somewhere above 
+switch (yyn)
+in yyparse()
+in psycon.tab.c
+
+
+
+  fpp=fopen("parse","at");
+  if(yyn<=19) 
+	  fprintf(fpp,"%d\n", yyn);
+  else
+	  fprintf(fpp,"%d\t", yyn);
+  fclose(fpp);

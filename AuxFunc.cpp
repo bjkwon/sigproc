@@ -54,9 +54,8 @@ double cmpangle(complex<double> x) { return arg(x); }
 
 void EnumAudioVariables(CAstSig &ast, vector<string> &var)
 {
-	CAstSigEnv *pe = ast.pEnv;
 	var.clear();
-	for (map<string, CSignals>::iterator what=pe->Tags.begin(); what!=pe->Tags.end(); what++)
+	for (map<string, CSignals>::iterator what=ast.Tags.begin(); what!=ast.Tags.end(); what++)
 		if (what->second.GetType()==CSIG_AUDIO) var.push_back(what->first);
 }
 
@@ -858,7 +857,7 @@ void aux_file(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 			newstr += ']';
 			delete[] buf;
 
-			CAstSig tempast;
+			CAstSig tempast(ast.pEnv);
 			tempast.SetNewScript(newstr.c_str());
 			tempast.Compute();
 
@@ -1109,10 +1108,18 @@ void aux_isnull(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	ast.Sig.MakeLogical();
 }
 
+void aux_isaudio(CAstSig &ast, const AstNode *pnode, const AstNode *p)
+{
+	const char *fnsigs[] = {"(variable)", 0};
+	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	ast.Compute(p);
+	ast.Sig.SetValue(ast.Sig.GetType()==CSIG_AUDIO ? 1 : 0);
+	ast.Sig.MakeLogical();
+}
+
 void aux_isempty(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
-	const char *fnsigs[] = {
-		"(variable)", 0};
+	const char *fnsigs[] = {"(variable)", 0};
 	checkNumArgs(pnode, p, fnsigs, 1, 1);
 	ast.Compute(p);
 	ast.Sig.SetValue(ast.Sig.IsEmpty());
@@ -1659,6 +1666,7 @@ void HandleExp1(const AstNode *pnode, CSignals &Sig)
 
 	const char *fnsigs[] = {"(signal)", 0};
 	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	if (fname == "length" && Sig.IsString()) {Sig.SetValue(Sig.length()); return;}
 	CSignals SecondCh;
 	if (Sig.next)
 	{
@@ -1817,6 +1825,7 @@ void CAstSig::HandleAuxFunctions(const AstNode *pnode)
 	else if (fname == "ifft")		aux_ifft(*this, pnode, p);
 	else if (fname == "isnull")		aux_isnull(*this, pnode, p);
 	else if (fname == "isempty")	aux_isempty(*this, pnode, p);
+	else if (fname == "isaudio")	aux_isaudio(*this, pnode, p);
 	else if (fname == "and")		aux_and(*this, pnode, p);
 	else if (fname == "or")			aux_or(*this, pnode, p);
 	else if (fname == "envelope")	aux_envelope(*this, pnode, p);

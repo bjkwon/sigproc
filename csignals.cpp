@@ -323,7 +323,7 @@ body &body::addmult(char type, body &arg)
 body &body::each(double (*fn)(double))
 {
 	if (bufBlockSize==1)
-		for (int i=0; i<nSamples; ++i)	logbuf[i] = fn(logbuf[i]);
+		for (int i=0; i<nSamples; ++i)	logbuf[i] = (bool)fn(logbuf[i]);
 	else
 		for (int i=0; i<nSamples; ++i)	buf[i] = fn(buf[i]);
 	return *this;
@@ -353,9 +353,9 @@ body &body::each(double (*fn)(double, double), body &arg)
 	{
 		double val = arg.value();
 		if (bufBlockSize==1 && arg.bufBlockSize==1)
-			for (int k=0; k<nSamples; k++)	logbuf[k] = fn(logbuf[k],arg.logbuf[0]); 
+			for (int k=0; k<nSamples; k++)	logbuf[k] = (bool)fn(logbuf[k],arg.logbuf[0]); 
 		else if (bufBlockSize==1 && arg.bufBlockSize!=1)
-			for (int k=0; k<nSamples; k++)	logbuf[k] = fn(logbuf[k],val); 
+			for (int k=0; k<nSamples; k++)	logbuf[k] = (bool)fn(logbuf[k],val); 
 		else
 			for (int k=0; k<nSamples; k++)	buf[k] = fn(buf[k],val); 
 	}
@@ -364,9 +364,9 @@ body &body::each(double (*fn)(double, double), body &arg)
 		double baseval = buf[0];
 		UpdateBuffer(arg.nSamples);
 		if (bufBlockSize==1 && arg.bufBlockSize==1)
-			for (int k=0; k<arg.nSamples; k++) logbuf[k] = fn(baseval, arg.logbuf[k]); 
+			for (int k=0; k<arg.nSamples; k++) logbuf[k] = (bool)fn(baseval, arg.logbuf[k]); 
 		else if (bufBlockSize==1 && arg.bufBlockSize!=1)
-			for (int k=0; k<arg.nSamples; k++) logbuf[k] = fn(baseval, arg.buf[k]); 
+			for (int k=0; k<arg.nSamples; k++) logbuf[k] = (bool)fn(baseval, arg.buf[k]); 
 		else
 			for (int k=0; k<arg.nSamples; k++) buf[k] = fn(baseval, arg.buf[k]); 
 	}
@@ -374,9 +374,9 @@ body &body::each(double (*fn)(double, double), body &arg)
 	{
 		nSamples = min(nSamples, arg.nSamples);
 		if (bufBlockSize==1 && arg.bufBlockSize==1)
-			for (int k=0; k<nSamples; k++) logbuf[k] = fn(logbuf[k], arg.logbuf[k]); 
+			for (int k=0; k<nSamples; k++) logbuf[k] = (bool)fn(logbuf[k], arg.logbuf[k]); 
 		else if (bufBlockSize==1 && arg.bufBlockSize!=1)
-			for (int k=0; k<nSamples; k++) logbuf[k] = fn(logbuf[k], arg.buf[k]); 
+			for (int k=0; k<nSamples; k++) logbuf[k] = (bool)fn(logbuf[k], arg.buf[k]); 
 		else
 			for (int k=0; k<nSamples; k++) buf[k] = fn(buf[k], arg.buf[k]); 
 	}

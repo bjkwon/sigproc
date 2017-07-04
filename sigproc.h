@@ -395,7 +395,6 @@ class CAstSigEnv
 {
 	friend class CAstSig;
 public:
-	map<string,CSignals> Tags;
 	map<string,AstNode *> UDFs;
 	map<string, vector<int>> DebugBreaks;
 	int Fs;
@@ -403,22 +402,25 @@ public:
 
 	CAstSigEnv(const int fs = 1);
 	~CAstSigEnv();
-	int ClearVar(const char *var);
-	void EnumVar(vector<string> &var);
-	CSignals *GetSig(const char *var);
-	CAstSigEnv& CAstSigEnv::operator=(const CAstSigEnv& rhs);
-	void AddDelDebugging(string udfname, int add);
+	CAstSigEnv& operator=(const CAstSigEnv& rhs);
+	EXP_CS CAstSigEnv &SetPath(const char *path);
+	EXP_CS CAstSigEnv &AddPath(const char *path);
 };
 
 class CAstSig
 {
 public:
+	map<string, CSignals> Tags;
 	AstNode *pAst;
 	CSignals Sig;
 	string statusMsg;
 	CAstSigEnv *pEnv;
 	unsigned long Tick0, Tick1;
 	int beginLine, endLine, currentLine;
+	const AstNode *pnodeLast;
+	AstNode *pCall;
+	AstNode *lhs;
+	char *lhsvar;
 private:
 	static const int DefaultFs = 22050;
 	string Script;
@@ -427,12 +429,13 @@ private:
 	bool fAllocatedAst, fExit, fBreak, fContinue;
 	CAstSig *sub;
 	AstNode *pLast;
-	const AstNode *pnodeLast;
+protected:
 	int typeLast;
 
 private:
 	void debug(const CAstSig *debugAstSig, int debug_status, int line=-1);
-	void CAstSig::ddebug(CAstSig *debugAstSig);
+	void ddebug(CAstSig *debugAstSig);
+	void debugcatch();
 
 	void initGlobals(const CAstSig *env);
 	void HandleAuxFunctions(const AstNode *pnode);
@@ -447,19 +450,19 @@ private:
 	AstNode *get_tree_on_line(const AstNode *pnode, int line);
 
 public:
-	void CallUDF(const AstNode *lhs, const char *lhsvar, const AstNode *rhs, bool debugging=false);
+	void CallUDF(int debug_status=0);
 	void (*CallbackCIPulse)(const AstNode *, CAstSig *);
 	int (*CallbackHook)(CAstSig &ast, const AstNode *pnode, const AstNode *p);
 	EXP_CS CSignals *RetrieveTag(const char *tagname);
 	EXP_CS CSignal *RetrieveCell(const char *cellvar, int id);
 
-	EXP_CS CAstSig(const int fs = DefaultFs);
     EXP_CS CAstSig(const CAstSig &org);
 	EXP_CS CAstSig(const CAstSig *env);
 	EXP_CS CAstSig(const char *str, const CAstSig *env);
 	EXP_CS CAstSig(AstNode *pNode, const CAstSig *env);
-	EXP_CS CAstSig(const char *str, const int fs = DefaultFs);
-	EXP_CS CAstSig(AstNode *pNode, const int fs);
+	EXP_CS CAstSig(CAstSigEnv *env);
+	EXP_CS CAstSig(const char *str, CAstSigEnv *env);
+	EXP_CS CAstSig(AstNode *pNode, CAstSigEnv *env);
 	EXP_CS ~CAstSig();
 
 	EXP_CS CAstSig &SetNewScript(const char *str, AstNode *pAstOut = NULL);
@@ -472,8 +475,6 @@ public:
 	EXP_CS CSignals &GetTag(const char *name);
 	EXP_CS CAstSig &AddCell(const char *name, const CSignals &sig);
 	EXP_CS CAstSig &SetCell(const char *name, const unsigned int i, const CSignal &sig);
-	EXP_CS CAstSig &SetPath(const char *path);
-	EXP_CS CAstSig &AddPath(const char *path);
 	EXP_CS const char *GetPath() {return pEnv->AuxPath.c_str();}
 	EXP_CS AstNode *GetAst(void) {return pAst;}
 	EXP_CS int GetFs(void) {return pEnv->Fs;}
@@ -482,6 +483,11 @@ public:
 	EXP_CS string GetScript() {return Script;}
 	EXP_CS void interrupt(void);
 	EXP_CS bool isInterrupted(void);
+
+
+	EXP_CS int ClearVar(const char *var);
+	EXP_CS void EnumVar(vector<string> &var);
+	EXP_CS CSignals *GetSig(const char *var);
 
 	EXP_CS string MakeFilename(string fname, const string ext);
 	EXP_CS FILE *OpenFileInPath(string fname, const string ext);
