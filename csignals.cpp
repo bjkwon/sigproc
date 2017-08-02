@@ -2595,6 +2595,12 @@ EXP_CS CSignals::~CSignals()
 EXP_CS void CSignals::SetNextChan(CSignal *second)
 {
 	if (second) {
+		if (fs!=second->GetFs())
+		{
+			char errstr[256];
+			sprintf(errstr, "SetNextChan attempted on different fs: fs1=%d, fs2=%d", GetFs(), second->GetFs());
+			throw errstr;
+		}
 		if (next) {
 			delete next;
 			next = NULL;
@@ -2725,8 +2731,13 @@ EXP_CS CSignals& CSignals::operator>>=(const double delta)
 
 EXP_CS CSignals& CSignals::Take(CSignals& out, int id1, int id2)
 {
+	CSignal out2(out.fs);
 	CSignal::Take(out, id1, id2);
-	if (next!=NULL) next->Take(*out.next, id1, id2);
+	if (next!=NULL) 
+	{
+		next->Take(out2, id1, id2);
+		out.SetNextChan(&out2);
+	}
 	return out;
 }
 
@@ -2859,12 +2870,11 @@ EXP_CS double CSignals::MakeChainless()
 	{
 		next->MakeChainless();
 		int diff = nSamples - next->nSamples;
-		CSignal sil(fs);
-		sil.Silence(abs(diff));
-		if (diff>0)
-			*next += &sil;
-		else if (diff<0)
-			*(CSignal*)this += &sil;
+		CSignals silenc(fs);
+		if (diff>0) // next is shorter (next needs padding)
+			next->UpdateBuffer(nSamples);
+		else
+			UpdateBuffer(next->nSamples);
 	}
 	return alldur();
 }
@@ -3222,6 +3232,7 @@ EXP_CS int CSignals::GetType() const
 
 EXP_CS int CSignals::ReadAXL(FILE* fp, bool logical)
 {
+	size_t check =sizeof(nSamples);
 	size_t res;
 	int res2, nChains;
 	res = fread((void*)&fs, sizeof(fs), 1, fp);

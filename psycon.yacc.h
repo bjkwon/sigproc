@@ -42,6 +42,7 @@ typedef struct AstNode_t {
 
 extern int yydebug;
 
+int yyPrintf(const char *msg, AstNode *p);
 int getTokenID(const char *str);
 char *getAstNodeName(AstNode *p);
 __declspec (dllexport) int yyparse(AstNode **pproot, char **errmsg);

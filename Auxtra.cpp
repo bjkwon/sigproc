@@ -818,7 +818,7 @@ void aux_text(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, "Failed to load graffy.dll for plot");
 	const char *fnsigs[] = {"(x,  y, string)", 0};
 	checkNumArgs(pnode, p, fnsigs, 3, 3);
-	CSignals *gcf = ast.RetrieveTag("gcf");
+	CSignals *gcf = ast.RetrieveVar("gcf");
 	if (gcf==NULL) 	throw CAstException(pnode, "gcf not ready (There is no plot window to draw text)");
 	CSignals first, second, third;
 	first = ast.Compute(p);
@@ -940,7 +940,7 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	}
 	//update gcf here
 	GetFigID(fig, gcf);
-	ast.SetTag("gcf", gcf);
+	ast.SetVar("gcf", gcf);
 
 	HWND h  = GetHWND_SIGPROC();
 	PostMessage(h, WM__PLOTDLG_CREATED, (WPARAM)"", (LPARAM)&in);
@@ -966,7 +966,7 @@ void aux_pause(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		Sleep((DWORD)sig.value());
 	else // zero 
 	{
-		CSignals *gcf = ast.RetrieveTag("gcf");
+		CSignals *gcf = ast.RetrieveVar("gcf");
 		if (gcf==NULL) 	throw CAstException(pnode, "(pause) gcf not ready (There is no plot window to draw text)");
 		HANDLE h = GCF(gcf);
 		HANDLE hText = AddText(h, "Press any key", .8, .95, 0, 0);

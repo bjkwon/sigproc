@@ -69,11 +69,12 @@
      T_NUMBER = 284,
      T_STRING = 285,
      T_ID = 286,
-     T_ENDPOINT = 287,
-     T_NEGATIVE = 288,
-     T_POSITIVE = 289,
-     T_LOGIC_NOT = 290,
-     T_REPLICA = 291
+     T_HOOKCMD = 287,
+     T_ENDPOINT = 288,
+     T_NEGATIVE = 289,
+     T_POSITIVE = 290,
+     T_LOGIC_NOT = 291,
+     T_REPLICA = 292
    };
 #endif
 

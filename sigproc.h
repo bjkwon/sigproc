@@ -28,6 +28,29 @@
 #define CSIG_COMPLEX	19
 #define CSIG_AUDIO		65
 
+// Used for communication bet sigproc and xcom (i.e., AstSig.cpp and showvar.cpp)
+#define WM__DEBUG		WM_APP+4000 
+#define ID_DEFAULT	99
+#define ID_DEBUG_STEP 108
+#define ID_DEBUG_STEPIN 109
+#define ID_DEBUG_CONTINUE 110
+#define ID_DEBUG_EXIT 111
+#define ID_DEBUG 112
+
+enum DEBUG_STATUS
+{
+    null=-1,
+    entering,
+    progress,
+	stepping,
+	stepping_in,
+	continuing,
+    exiting,
+    cleanup,
+	aborting,
+};
+
+//End of Used for communication bet sigproc and xcom (i.e., AstSig.cpp and showvar.cpp)
 
 #ifdef _WINDOWS
 #ifndef _MFC_VER // If MFC is NOT used.
@@ -286,7 +309,6 @@ public:
 
 	EXP_CS CSignals();
 	EXP_CS CSignals(int  sampleRate);
-//	EXP_CS CSignals(FILE* fp);
 	EXP_CS CSignals(double value);
 	EXP_CS CSignals(double *y, int  len);
 	EXP_CS CSignals(const CSignal& src);
@@ -398,6 +420,7 @@ public:
 	map<string,AstNode *> UDFs;
 	map<string, vector<int>> DebugBreaks;
 	int Fs;
+	int curLine; // used for control F10
 	string AuxPath;
 
 	CAstSigEnv(const int fs = 1);
@@ -410,37 +433,42 @@ public:
 class CAstSig
 {
 public:
-	map<string, CSignals> Tags;
+	map<string, CSignals> Vars;
 	AstNode *pAst;
 	CSignals Sig;
 	string statusMsg;
 	CAstSigEnv *pEnv;
 	unsigned long Tick0, Tick1;
-	int beginLine, endLine, currentLine;
+	int nextBreakPoint, currentLine;
 	const AstNode *pnodeLast;
 	AstNode *pCall;
 	AstNode *lhs;
 	char *lhsvar;
+	CAstSig *son;
+	CAstSig *dad;
+	DEBUG_STATUS dstatus;
 private:
 	static const int DefaultFs = 22050;
 	string Script;
 	CSignals replica;
 	double endpoint;
+	bool debugon;
 	bool fAllocatedAst, fExit, fBreak, fContinue;
-	CAstSig *sub;
 	AstNode *pLast;
 protected:
 	int typeLast;
 
 private:
-	void debug(const CAstSig *debugAstSig, int debug_status, int line=-1);
-	void ddebug(CAstSig *debugAstSig);
-	void debugcatch();
+#ifdef _WINDOWS
+	void debug_appl_manager(const CAstSig *debugAstSig, int debug_status, int line=-1);
+	int debugcatch(const AstNode *pBlock=NULL);
+	int breakpoint(const AstNode *pnode);
+#endif
 
-	void initGlobals(const CAstSig *env);
+	bool IsNoDebugCompute();
 	void HandleAuxFunctions(const AstNode *pnode);
 	AstNode *RetrieveUDF(const char *fname);
-	CSignals &getlhs(const AstNode *pnode, CSignal *tagsig, CSignals &isig);
+	CSignals &getlhs(const AstNode *pnode, CSignals *tagsig, CSignals &isig);
 	CAstSig &insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig);
 	void checkindexrange(const AstNode *pnode, CSignal *inout, int id, string errstr);
 	bool isContiguous(body &id, int &begin, int &end);
@@ -448,12 +476,14 @@ private:
 	CSignals &extract(CSignal &Sig, body &isig);
 	bool checkcond(const AstNode *p);
 	AstNode *get_tree_on_line(const AstNode *pnode, int line);
+	bool IsThisBreakpoint(const AstNode *pnode);
 
 public:
+	bool CheckPreparCallUDF(const AstNode *pnode);
 	void CallUDF(int debug_status=0);
 	void (*CallbackCIPulse)(const AstNode *, CAstSig *);
 	int (*CallbackHook)(CAstSig &ast, const AstNode *pnode, const AstNode *p);
-	EXP_CS CSignals *RetrieveTag(const char *tagname);
+	EXP_CS CSignals *RetrieveVar(const char *tagname);
 	EXP_CS CSignal *RetrieveCell(const char *cellvar, int id);
 
     EXP_CS CAstSig(const CAstSig &org);
@@ -471,8 +501,8 @@ public:
 	EXP_CS CSignals &Compute(const AstNode *pnode);
 	EXP_CS CSignals &Eval(AstNode *pnode);
 	EXP_CS CAstSig &Reset(const int fs = 0, const char* path=NULL);
-	EXP_CS CAstSig &SetTag(const char *name, const CSignals &sig);
-	EXP_CS CSignals &GetTag(const char *name);
+	EXP_CS CAstSig &SetVar(const char *name, const CSignals &sig);
+	EXP_CS CSignals &GetVar(const char *name);
 	EXP_CS CAstSig &AddCell(const char *name, const CSignals &sig);
 	EXP_CS CAstSig &SetCell(const char *name, const unsigned int i, const CSignal &sig);
 	EXP_CS const char *GetPath() {return pEnv->AuxPath.c_str();}
@@ -490,7 +520,7 @@ public:
 	EXP_CS CSignals *GetSig(const char *var);
 
 	EXP_CS string MakeFilename(string fname, const string ext);
-	EXP_CS FILE *OpenFileInPath(string fname, const string ext);
+	EXP_CS FILE *OpenFileInPath(string fname, const string ext, string &fullfilename);
 	EXP_CS AstNode *ReadUDF(const char *udf_filename, const AstNode *pnode);
 };
 

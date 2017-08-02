@@ -53,7 +53,7 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 %token T_LOGIC_OR	"||"
 
 %token <dval> T_NUMBER "number"
-%token <str> T_STRING "string"	T_ID "identifier" 
+%token <str> T_STRING "string"	T_ID "identifier" T_HOOKCMD "HookCommand"
 %token T_ENDPOINT	
 %type <pnode> block block_func line line_func stmt funcdef elseif_list condition conditional case_list id_list arg arg_list vector matrix range exp_range assign exp initcell
 
@@ -113,29 +113,31 @@ void print_token_value(FILE *file, int type, YYSTYPE value);
 input: /* empty */
 	{ *pproot = NULL;}
 	| block_func	/* can be NULL */
-	{ *pproot = $1;}
+	{ *pproot = $1;} //yyn=3
 ;
 
 block_func: line_func	/* block_func can be NULL */
 	{ $$ = $1; }
 	| block_func line_func
-	{
+	{ //yyn=5
 		if ($2) {
 			if ($1 == NULL)
-			{
 				$$ = $2;
-				$$->line += 20000;
-			}
 			else if ($1->type == NODE_BLOCK) 
 			{
-				$$ = $1;
-				$1->LastChild = $1->LastChild->next = $2;
+//				$$ = $1;
+				$1->tail->next = $2;
+				$1->tail = $2;
 			} 
 			else 
 			{ // a=1; b=2; ==> $1->type is '='. So first, a NODE_BLOCK tree should be made.
 				$$ = newAstNode(NODE_BLOCK, @$);
-				$$->child = $1;
-				$$->LastChild = $$->child->next = $2;
+				$$->next = $1;
+				$1->next = $$->tail = $2;
+#ifdef _DEBUG				
+				$$->str = (char*)malloc(32);
+				strcpy_s ($$->str, 32, "block_begins,yyn=5");
+#endif
 			}
 		} else
 			$$ = $1;
@@ -145,63 +147,52 @@ block_func: line_func	/* block_func can be NULL */
 block:	line	/* complicated to prevent NULL (make empty block instead) or single statement block */
 	{
 		if ($1) // if cond1, x=1, end ==> x=1 comes here.
-		{
 			$$ = $1;
-			$$->line += 30;
-		}
 		else
-		{
 			$$ = newAstNode(NODE_BLOCK, @$);
-			$$->line += 20;
-		}
 	}
-	| block line
+	| block line //yyn=7
 	{
 		if ($2) {
 			if ($1->type == NODE_BLOCK) {
-				if ($1->LastChild) {
-					$1->LastChild = $1->LastChild->next = $2;
-					$$ = $1;
-					$$->line += 70;
+				if ($$->next) {
+//					$$ = $1;
+					$1->tail->next = $2;
+					$1->tail = $2;
 				} else {
 					$$ = $2;
 					free($1);
-					$$->line += 40; 
 				}
 			} else { //if the second argument doesn't have NODE_BLOCK, make one
 				$$ = newAstNode(NODE_BLOCK, @$);
-				$$->child = $1;
-				$$->LastChild = $$->child->next = $2;
+				$$->next = $1;
+				$1->next = $$->tail = $2;
 #ifdef _DEBUG				
-				$$->str = (char*)malloc(16);
-				strcpy_s ($$->str, 16, "block_begins");
+				$$->str = (char*)malloc(32);
+				strcpy_s ($$->str, 32, "block_begins,yyn=7");
 #endif				
-				$$->line += 4300;
 			}
 		}
 		else // only "block" is given
-		{
 			$$ = $1;
-			$$->line += 10000;
-		}
 	}
 ;
 
-line:	T_NEWLINE
-	{ $$ = NULL;}
-	| error T_NEWLINE
-	{
+line:	T_NEWLINE 
+	{ $$ = NULL;} //yyn=8
+	| error T_NEWLINE 
+	{ //yyn=9
 		$$ = NULL;
 		yyerrok;
-	}
+	} 
 	| stmt eol
-	{ $$ = $1;}
+	{ $$ = $1;} //yyn=10
 ;
 
 line_func: line
-	{ $$ = $1;}
+	{ $$ = $1;} //yyn=11
 	| funcdef
-	{ $$ = $1;}
+	{ $$ = $1;} //yyn=12
 ;
 
 eol: ',' | ';' | T_NEWLINE | T_EOF
@@ -223,15 +214,13 @@ conditional: condition
 elseif_list: /*empty*/
 	{
 		$$ = newAstNode(T_IF, @$);
-		$$->line += 600;
 	}
 	| T_ELSEIF conditional block elseif_list 
 	{
 		$$ = newAstNode(T_IF, @$);
 		$$->child = $2;
-		$$->next = $3;
-		$$->alt = $4;
-		$$->line += 700;
+		$2->next = $3;
+		$2->alt = $4;
 	}
 	| elseif_list T_ELSE block
 	{
@@ -239,13 +228,11 @@ elseif_list: /*empty*/
 		{  
 			yydeleteAstNode($1, 1);
 			$$ = $3;
-			$$->line += 500;
 		}
 		else
 		{
 			$$ = $1;
-			$$->alt = $3;
-			$$->line += 400;
+			$1->alt = $3;
 		}
 	}
 ;
@@ -253,17 +240,24 @@ elseif_list: /*empty*/
 stmt: exp
 	{ $$ = $1;}
 	| assign
-	{ $$ = $1;}
+	{ $$ = $1;} //yyn=28
 	| condition
 	{ $$ = $1;}
 	| initcell
 	{ $$ = $1;}
+	| T_HOOKCMD
+	{
+		$$ = newAstNode(NODE_CALL, @$);
+ 		$$->str = malloc(strlen($1)+1);
+ 		strcpy($$->str, $1);
+ 		free($1);
+	}
 	| T_IF conditional block elseif_list T_END
 	{ // This works, too, for "if cond, act; end" without else, because elseif_list can be empty
 		$$ = newAstNode(T_IF, @$);
 		$$->child = $2;
-		$$->next = $3;
-		$$->alt = $4;
+		$2->next = $3;
+		$2->alt = $4;
 		if ($4->child==NULL && $4->next==NULL) // When elseif_list is empty, T_IF is made, but no child and next
 		{
 			yydeleteAstNode($$->alt, 1);
@@ -284,7 +278,7 @@ stmt: exp
 	{
 		$$ = $3;
 		$2->next = $3->child;
-		$3->LastChild->next = $5;
+		$3->tail->next = $5;
 		$$->child = $2;
 		$$->line = @$.first_line;
 		$$->column = @$.first_column;
@@ -337,6 +331,7 @@ stmt: exp
 	{ $$ = newAstNode(T_BREAK, @$);}
 	| T_CONTINUE
 	{ $$ = newAstNode(T_CONTINUE, @$);}
+	
 ;
 
 funcdef: T_FUNCTION T_ID '(' id_list ')' block func_end
@@ -345,7 +340,6 @@ funcdef: T_FUNCTION T_ID '(' id_list ')' block func_end
 		$$->str = $2;
 		$$->child = $4;
 		$4->next = $6;
-		$$->line = 3000 + @$.first_line;
 	}
 	| T_FUNCTION T_ID '=' T_ID '(' id_list ')' block func_end
 	{
@@ -354,9 +348,8 @@ funcdef: T_FUNCTION T_ID '(' id_list ')' block func_end
 		$$->child = $6;
 		$6->next = $8;
 		$$->alt = newAstNode(NODE_VECTOR, @2);
-		$$->alt->child = $$->alt->LastChild = newAstNode(T_ID, @3);
-		$$->alt->child->str = $$->alt->LastChild->str = $2;
-		$$->line = 4400 + @$.first_line;
+		$$->alt->child = $$->alt->tail = newAstNode(T_ID, @3);
+		$$->alt->child->str = $$->alt->tail->str = $2;
 	}
 	| T_FUNCTION '[' vector ']' '=' T_ID '(' id_list ')' block func_end
 	{
@@ -365,7 +358,6 @@ funcdef: T_FUNCTION T_ID '(' id_list ')' block func_end
 		$$->child = $8;
 		$8->next = $10;
 		$$->alt = $3;
-		$$->line = 5000 + @$.first_line;
 
 		}
 	| T_FUNCTION T_ID '{' '}' '=' T_ID '(' id_list ')' block func_end
@@ -386,21 +378,21 @@ case_list: /* empty */
 	| case_list T_CASE exp T_NEWLINE block
 	{
 		if ($1->child)
-			$1->LastChild->next = $3;
+			$1->tail->next = $3;
 		else
 			$1->child = $3;
 		$3->next = $5;
-		$1->LastChild = $5;
+		$1->tail = $5;
 		$$ = $1;
 	}
 	| case_list T_CASE '{' arg_list '}' block
 	{
 		if ($1->child)
-			$1->LastChild->next = $4;
+			$1->tail->next = $4;
 		else
 			$1->child = $4;
 		$4->next = $6;
-		$1->LastChild = $6;
+		$1->tail = $6;
 		$$ = $1;
 	}
 ;
@@ -482,31 +474,31 @@ id_list: /* empty */
 	| T_ID
 	{
 		$$ = newAstNode(NODE_IDLIST, @$);
-		$$->child = $$->LastChild = newAstNode(T_ID, @$);
-		$$->LastChild->str = $1;
+		$$->child = $$->tail = newAstNode(T_ID, @$);
+		$$->tail->str = $1;
 	}
 	| T_ID '{' '}'
 	{
 		$$ = newAstNode(NODE_IDLIST, @$);
-		$$->child = $$->LastChild = newAstNode(NODE_INITCELL, @$);
-		$$->LastChild->str = $1;
+		$$->child = $$->tail = newAstNode(NODE_INITCELL, @$);
+		$$->tail->str = $1;
 	}
 	| id_list ',' T_ID
 	{
-		$1->LastChild = $1->LastChild->next = newAstNode(T_ID, @3);
+		$1->tail = $1->tail->next = newAstNode(T_ID, @3);
 		$$ = $1;
-		$$->LastChild->str = $3;
+		$$->tail->str = $3;
 	}
 	| id_list ',' T_ID '{' '}'
 	{
-		$1->LastChild = $1->LastChild->next = newAstNode(NODE_INITCELL, @3);
+		$1->tail = $1->tail->next = newAstNode(NODE_INITCELL, @3);
 		$$ = $1;
-		$$->LastChild->str = $3;
+		$$->tail->str = $3;
 	}
 ;
 
 arg: exp_range
-	{ $$ = $1; }
+	{ $$ = $1; } //yyn=85
 	| initcell
 	{ $$ = $1; }
 ;
@@ -514,11 +506,11 @@ arg: exp_range
 arg_list: arg
 	{
 		$$ = newAstNode(NODE_ARGS, @$);
-		$$->child = $$->LastChild = $1;
+		$$->child = $$->tail = $1;
 	}
 	| arg_list ',' arg
 	{
-		$1->LastChild = $1->LastChild->next = $3;
+		$1->tail = $1->tail->next = $3;
 		$$ = $1;
 	}
 ;
@@ -530,11 +522,11 @@ matrix: /* empty */
 	| vector
 	{
 		$$ = newAstNode(NODE_MATRIX, @$);
-		$$->child = $$->LastChild = $1;
+		$$->child = $$->tail = $1;
 	}
 	| matrix ';' vector
 	{
-		$1->LastChild = $1->LastChild->next = $3;
+		$1->tail = $1->tail->next = $3;
 		$$ = $1;
 	}
 ;
@@ -542,16 +534,16 @@ matrix: /* empty */
 vector: exp_range
 	{
 		$$ = newAstNode(NODE_VECTOR, @$);
-		$$->child = $$->LastChild = $1;
+		$$->child = $$->tail = $1;
 	}
 	| vector exp_range
 	{
-		$1->LastChild = $1->LastChild->next = $2;
+		$1->tail = $1->tail->next = $2;
 		$$ = $1;
 	}
 	| vector ',' exp_range
 	{
-		$1->LastChild = $1->LastChild->next = $3;
+		$1->tail = $1->tail->next = $3;
 		$$ = $1;
 	}
 ;
@@ -563,7 +555,7 @@ range: exp ':' exp
 	| exp ':' exp ':' exp
 	{
 		$$ = makeFunctionCall(":", $1, $5, @$);
-		$$->LastChild = $5->next = $3;
+		$$->tail = $5->next = $3;
 	}
 ;
 
@@ -691,7 +683,7 @@ assign: T_ID '=' exp_range
 		$$->child = $8;
 		$$->alt = newAstNode(NODE_IDLIST, @$);
 		$$->alt->child = $5;
-		$$->alt->LastChild = $3;
+		$$->alt->alt = $3;
 	}
 	| T_ID '{' exp '}' '(' exp '~' exp ')' '=' exp
 	{
@@ -701,7 +693,7 @@ assign: T_ID '=' exp_range
 		$$->alt = $3;
 		$3->alt = newAstNode(NODE_IDLIST, @$);
 		$3->alt->child = $8;
-		$3->alt->LastChild = $6;
+		$3->alt->alt = $6;
 	}
 	//T_ID '{' exp '}' '(' arg_list ')' '=' exp_range  -->  does not work 4/8/2017 bjk
 	| T_ID '{' exp '}' '(' exp ')' '=' exp_range
@@ -780,6 +772,7 @@ exp: T_NUMBER
 	{
 		$$ = newAstNode(T_ID, @$);
 		$$->str = $1;
+//		yyPrintf("T_ID", $$);
 	}
 	| T_ID '{' exp '}'
 	{
@@ -828,19 +821,11 @@ exp: T_NUMBER
 		$$ = newAstNode(NODE_CALL, @$);
  		$$->str = $1;
 		$$->child = $3;
-		$$->LastChild = $3; // leaving a mark for conditional indexing 3/28/2017 bjk
+		$$->tail = $3; // leaving a mark for conditional indexing 3/28/2017 bjk
 		$$->line = @$.first_line;
 		$$->column = @$.first_column;
 	}
-	| '#' T_ID '(' ')'
-	{
-		$$ = newAstNode(NODE_CALL, @$);
- 		$$->str = malloc(strlen($2)+2);
- 		$$->str[0] = '#';
- 		strcpy($$->str+1, $2);
- 		free($2);
-	}
-	| '#' T_ID '(' arg_list ')'
+	| '#' T_ID '(' arg_list ')' // don't need any more.  left here for backw comp. 7/4/2017.
 	{
 		$$ = $4;
 		$$->type = NODE_CALL;
@@ -906,7 +891,7 @@ exp: T_NUMBER
 		$$->child = $1;
 		$1->next = $3;
 		$3->next = $5;
-		$$->LastChild = $5;
+		$$->tail = $5;
 	}
 	| exp T_OP_SHIFT exp
 	{ $$ = makeBinaryOpNode(T_OP_SHIFT, $1, $3, @$);}
@@ -1069,7 +1054,7 @@ AstNode *makeFunctionCall(char *name, AstNode *first, AstNode *second, YYLTYPE l
 	nn = newAstNode(NODE_CALL, loc);
 	nn->str = strdup(name);
 	nn->child = first;
-	nn->LastChild = first->next = second;
+	nn->tail = first->next = second;
 	return nn;
 }
 
@@ -1079,7 +1064,7 @@ AstNode *makeBinaryOpNode(int op, AstNode *first, AstNode *second, YYLTYPE loc)
 
 	nn = newAstNode(op, loc);
 	nn->child = first;
-	nn->LastChild = first->next = second;
+	nn->tail = first->next = second;
 	return nn;
 }
 
@@ -1092,7 +1077,7 @@ AstNode *makeCompoundOpNode(int op, char *first, AstNode *second, YYLTYPE loc1, 
 	tempstrpt = (char*)malloc(strlen(first)+1); /* This will be cleaned up during yydeleteAstNode().*/
 	strcpy_s(tempstrpt, strlen(first)+1, first);
 	nn->child->str = tempstrpt;
-	nn->LastChild = nn->child->next = second;
+	nn->tail = nn->child->next = second;
 	return nn;
 }
 
@@ -1105,13 +1090,13 @@ AstNode *makeCompoundOpNodeFunctionCall(int op, char *first, AstNode *second, YY
 	tempstrpt = (char*)calloc(2,1); /* This will be cleaned up during yydeleteAstNode().*/ /* because this is for op which is a char*/
 	tempstrpt[0] = op;
 	nn->str = strdup(tempstrpt);
-	nn->LastChild = second;
+	nn->tail = second;
 	
 	nn->child = newAstNode(T_ID, loc1);
 	tempstrpt2 = (char*)malloc(strlen(first)+1); /* This will be cleaned up during yydeleteAstNode().*/
 	strcpy_s(tempstrpt2, strlen(first)+1, first);
 	nn->child->str = tempstrpt2;
-	nn->LastChild = nn->child->next = second;
+	nn->tail = nn->child->next = second;
 	return nn;
 }
 
@@ -1129,9 +1114,9 @@ AstNode *makeCompoundLevelOpNode(char *first, AstNode *second, YYLTYPE loc1, YYL
 	nn->child = newAstNode('@', loc2);
 	nn->child->child = newAstNode(T_ID, loc1);
 	nn->child->child->str = tempstrpt;
-	nn->child->LastChild = nn->child->child->next = newAstNode(T_ID, loc1);
-	nn->child->LastChild->str = tempstrpt2;
-	nn->LastChild = nn->child->next = second;
+	nn->child->tail = nn->child->child->next = newAstNode(T_ID, loc1);
+	nn->child->tail->str = tempstrpt2;
+	nn->tail = nn->child->next = second;
 	return nn;
 }
 
@@ -1191,4 +1176,10 @@ int yydeleteAstNode(AstNode *p, int fSkipNext)
   }
   free(p);
   return 0;
+}
+
+int yyPrintf(const char *msg, AstNode *p)
+{
+	if (p)
+		printf("[%16s]token type: %d, %s, \n", msg, p->type, p->str);
 }

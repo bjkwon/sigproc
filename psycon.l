@@ -20,6 +20,7 @@ int appendLexString(void);
 %s BRACE
 ID	[[:alpha:]][[:alnum:]_]{0,30}
 NUM	[[:digit:]]+"."?[[:digit:]]*([eE][+-]?[[:digit:]]+)?|"."[[:digit:]]+
+HOOKCMD #[\x20-\x7e]{0,100}
 %%
 %{
 	yylloc.first_line = yylloc.last_line;
@@ -88,6 +89,11 @@ if|else|elseif|end|while|for|break|continue|switch|case|otherwise|function|endfu
 	yylloc.last_column += yyleng;
 	yylval.str = strdup(yytext);
 	return T_ID;
+	}
+{HOOKCMD}	{
+	yylloc.last_column += yyleng;
+	yylval.str = strdup(yytext);
+	return T_HOOKCMD;
 	}
 "//"[^\n]* {	/* eat up a comment line */
 	yylloc.last_column += yyleng;

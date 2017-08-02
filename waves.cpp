@@ -165,11 +165,17 @@ int CWavePlay::OnBlockDone(WAVEHDR* lpwh)
 	char errstr[256];
 	int id = GetCurrentThreadId ();
 
+//	FILE *pot = fopen("playback_track.txt","at");
+
 	// Insert LOGGING1
 	if (stopped)  
 	{	SendMessage (hWnd_calling, msgID, 0, ReportIndex);	return cleanUp(1); }
-	if (++ReportIndex>=0 && !blockMode) 	
+	if (++ReportIndex>=0 && !blockMode) 
+	{
 		SendMessage (hWnd_calling, msgID, curPt/wfx.nChannels, ReportIndex+1);
+//		fprintf(pot, "curPt=%d, curPt/wfx.nChannels=%d, ReportIndex+1=%d\n", curPt, curPt/wfx.nChannels, ReportIndex+1);
+	}
+//	fclose(pot);
 	if (curPt<totalSamples)
 	{  // blockLen could be all the same if it is not integer. In reality, because it is integer, there will be 
 		// some leftover if blockLen always the same as playBufferLen. So the last block should be treated differently.

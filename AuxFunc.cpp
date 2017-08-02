@@ -55,7 +55,7 @@ double cmpangle(complex<double> x) { return arg(x); }
 void EnumAudioVariables(CAstSig &ast, vector<string> &var)
 {
 	var.clear();
-	for (map<string, CSignals>::iterator what=ast.Tags.begin(); what!=ast.Tags.end(); what++)
+	for (map<string, CSignals>::iterator what=ast.Vars.begin(); what!=ast.Vars.end(); what++)
 		if (what->second.GetType()==CSIG_AUDIO) var.push_back(what->first);
 }
 
@@ -88,9 +88,10 @@ CAstException::CAstException(const AstNode *p0, const char* msg)
 
 void checkAudioSig(const AstNode *pnode, CSignals &checkthis, string addmsg)
 {
+	if (checkthis.GetType()==CSIG_AUDIO) return;
 	string msg("An audio signal is required ");
-	if (checkthis.GetType()!=CSIG_AUDIO)
-		throw CAstException(pnode, (msg+addmsg).c_str());
+	if (checkthis.GetType()==CSIG_CELL && ((CSignal)checkthis).GetType()==CSIG_AUDIO) return;
+	throw CAstException(pnode, (msg+addmsg).c_str());
 }
 
 void checkComplex (const AstNode *pnode, CSignals &checkthis)
@@ -109,16 +110,18 @@ void checkVector(const AstNode *pnode, CSignals &checkthis, string addmsg)
 
 void checkString(const AstNode *pnode, CSignals &checkthis, string addmsg)
 {
+	if (checkthis.GetType()==CSIG_STRING) return;
 	string msg("A string is required ");
-	if (checkthis.GetType()!=CSIG_STRING)
-		throw CAstException(pnode, (msg+addmsg).c_str());
+	if (checkthis.GetType()==CSIG_CELL && ((CSignal)checkthis).GetType()==CSIG_STRING) return;
+	throw CAstException(pnode, (msg+addmsg).c_str());
 }
 
 void blockCell(const AstNode *pnode, CSignals &checkthis)
 {
 	string msg("Not valid with a cell variable ");
 	if (checkthis.GetType()==CSIG_CELL)
-		throw CAstException(pnode, msg.c_str());
+		if (((CSignal)checkthis).GetType()==CSIG_EMPTY)
+			throw CAstException(pnode, msg.c_str());
 }
 
 void blockScalar(const AstNode *pnode, CSignals &checkthis)
@@ -880,6 +883,7 @@ void aux_HOOK(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	const AstNode *args;
 	if (pnode->str[0] == '#') {
 		HookName = pnode->str+1;
+		HookName=HookName.substr(0, HookName.find(' '));
 		args = p;
 	} else {
 		const char *fnsigs[] = {
@@ -954,18 +958,19 @@ void aux_HOOK(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		int n = round(ast.Sig.value());
 		Sleep(n);
 	} else
-		throw CAstException(pnode, "Undefined HOOK name:", HookName);
+		throw &ast;
 }
 
 #endif
 
 void aux_include(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
+	string dummy;
 	const char *fnsigs[] = {
 		"(filename)", 0};
 	checkNumArgs(pnode, p, fnsigs, 1, 1);
 	string filename = ast.ComputeString(p);
-	if (FILE *auxfile = ast.OpenFileInPath(filename, "aux")) {
+	if (FILE *auxfile = ast.OpenFileInPath(filename, "aux", dummy)) {
 		try {
 			CAstSig tast(&ast);
 			tast.SetNewFile(auxfile);
