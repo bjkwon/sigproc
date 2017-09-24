@@ -12,6 +12,16 @@
 #include "cipsycon.tab.h"
 #endif
 
+/* NOTE 9/23/2017
+Don't use------- throw CAstException(p, this, "error message");
+when p->type is NODE_XXXXXX, because it will make an error msg like 
+
+ERROR: NODE_EXTRACT : variable not available.
+
+which is not helpful to users.
+*/
+
+
 #ifdef XCOM
 
 #ifndef CISIGPROC  
@@ -27,6 +37,7 @@ public:
 	size_t comid; // command ID
 	char AppPath[256];
 	INPUT_RECORD debug_command_frame[6];
+	string comPrompt;
 
 	xcom();
 	virtual ~xcom();
@@ -106,8 +117,19 @@ CAstSig::CAstSig(const CAstSig *src)
 		pEnv = new CAstSigEnv(DefaultFs);
 }
 
-CAstSig::CAstSig(const char *str, const CAstSig *env)
-: pAst(NULL), pCall(NULL), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), dstatus(null), pLast(NULL), son(NULL), dad(NULL), pEnv(env->pEnv), CallbackCIPulse(NULL), CallbackHook(env->CallbackHook)
+CAstSig::CAstSig(const char *str, const CAstSig *src) // Used in auxfunc.cpp and psyntegDlgNIC.cpp
+: pAst(NULL), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), fExit(false), debugon(false), dstatus(null), pLast(NULL), son(NULL), dad(NULL), CallbackCIPulse(NULL), CallbackHook(NULL)
+{
+	Vars = src->Vars;
+	if (src) {
+		pEnv = src->pEnv;
+	} else
+		pEnv = new CAstSigEnv(DefaultFs);
+	SetNewScript(str);
+}
+
+CAstSig::CAstSig(const char *str, CAstSigEnv *env) // Used in dancer
+: pAst(NULL), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), fExit(false), debugon(false), dstatus(null), pLast(NULL), son(NULL), dad(NULL), pEnv(env), CallbackCIPulse(NULL), CallbackHook(NULL)
 {
 	SetNewScript(str);
 }
@@ -115,12 +137,6 @@ CAstSig::CAstSig(const char *str, const CAstSig *env)
 CAstSig::CAstSig(AstNode *pnode, const CAstSig *env)
 : pAst(pnode), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), dstatus(null), pLast(NULL), son(NULL), dad(NULL), pEnv(env->pEnv), CallbackCIPulse(NULL), CallbackHook(env->CallbackHook)
 {
-}
-
-CAstSig::CAstSig(const char *str, CAstSigEnv *env)
-: pAst(NULL), pCall(NULL), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), dstatus(null), pLast(NULL), son(NULL), dad(NULL), pEnv(env), CallbackCIPulse(NULL), CallbackHook(NULL)
-{
-	SetNewScript(str);
 }
 
 CAstSig::CAstSig(AstNode *pnode, CAstSigEnv *env)
@@ -138,6 +154,7 @@ CAstSig &CAstSig::SetNewScript(const char *str, AstNode *pAstOut)
 {
 	int res;
 	char *errmsg;
+	if (strlen(str)==0) return *this;
 
 	if (pAst && Script == str)
 		return *this;
@@ -146,7 +163,7 @@ CAstSig &CAstSig::SetNewScript(const char *str, AstNode *pAstOut)
 		fAllocatedAst = false;
 	}
 
-	pAst = NULL;
+	pAst = pCall = NULL;
 	if ((res = yysetNewStringToScan(str)))
 		throw "yysetNewStringToScan() failed!";
 
@@ -184,50 +201,200 @@ CAstSig &CAstSig::SetNewScript(const char *str, AstNode *pAstOut)
 }
 
 
-CAstSig &CAstSig::SetNewFile(FILE *fp)
+AstNode *CAstSig::SetNewScriptFromFile(const char *udf_filename, FILE *fp)
 {
-	if (fseek(fp, 0, SEEK_END)) throw "fseek error in AUX file";
+	if (fseek(fp, 0, SEEK_END)) throw "fseek error in SetNewScriptFromFile";
 	long int fsize = ftell(fp);
-	if (fseek(fp, 0, SEEK_SET)) throw "fseek error in AUX file";
+	if (fseek(fp, 0, SEEK_SET)) throw "fseek error in SetNewScriptFromFile";
 	char *buf = new char[fsize+1];
 	memset(buf,0,fsize+1);
-	try {
-	if( fread(buf, fsize, 1, fp) ) 	throw "fread error in AUX file";
+	if( fread(buf, fsize, 1, fp) ) 	throw "fread error in SetNewScriptFromFile";
 	buf[fsize]=0;
-	SetNewScript(buf, NULL);
-	delete[] buf;
-	return *this;
-	
-	} catch (const char *errmsg)
+	// Check if the content of udf file has changed; if so, set new script
+	if (pEnv->UDF_body[udf_filename] != buf)
 	{
-		delete[] buf;
-		throw errmsg;
+		if (pEnv->UDF_body[udf_filename].size()>0)
+			SendMessage(GetHWND_SIGPROC(), WM__DEBUG, (WPARAM)0, (LPARAM)udf_filename);
+		SetNewScript(buf, NULL);
+		pEnv->UDF_body[udf_filename] = buf;
+	}
+	else
+	{
+		pAst = pEnv->UDFs[udf_filename];
+	}
+	delete[] buf;
+	return pAst;
+}
+
+// as long as CAstSig *past is used to construct CAstException, cleanup_sons() is called
+// and necessary clean up is taken care of, upon exception thrown (error)
+// Take care of CAstException constructors not using CAstSig *past... 
+
+CAstException::CAstException(const AstNode *p, CAstSig *past, const string s1, const string s2)
+: pAst(past), pnode(p), str1(s1), str2(s2), int1(0)
+{
+	makeOutStr();
+}
+
+CAstException::CAstException(const AstNode *p, CAstSig *past, const string s1, const int x, const string s2)
+: pAst(past), pnode(p), str1(s1), str2(s2), int1(x)
+{
+	makeOutStr();
+}
+
+CAstException::CAstException(const AstNode *p, CAstSig *past, const char** FuncSigs, const string msg)
+: pAst(past), pnode(p), int1(0)
+{
+	const string fname = p->str;
+	string fnsig;
+	for (int i=0; FuncSigs[i]; ++i)
+		fnsig += "\n\t" + fname + FuncSigs[i];
+	str1 = fname + "( ) " + msg + "\n Usage:" + fnsig;
+	makeOutStr();
+}
+
+string GetNodeType(int type)
+{ // from psycon.yacc.h
+	switch(type)
+	{
+	case NODE_BLOCK:
+		return "NODE_BLOCK";
+	case NODE_ARGS:
+		return "NODE_ARGS";
+	case NODE_MATRIX:
+		return "NODE_MATRIX";
+	case NODE_VECTOR:
+		return "NODE_VECTOR";
+	case NODE_CALL:
+		return "NODE_CALL";
+	case NODE_FUNC:
+		return "NODE_FUNC";
+	case NODE_IDLIST:
+		return "NODE_IDLIST";
+	case NODE_EXTRACT:
+		return "NODE_EXTRACT";
+	case NODE_INITCELL:
+		return "NODE_INITCELL";
+	case NODE_IXASSIGN:
+		return "NODE_IXASSIGN";
+	case NODE_INTERPOL:
+		return "NODE_INTERPOL";
+	case NODE_RESTRING:
+		return "NODE_RESTRING";
+
+	case NODE_USEC:
+		return "NODE_USEC";
+	case NODE_MSEC:
+		return "NODE_MSEC";
+	case NODE_CIPULSE3:
+		return "NODE_CIPULSE3";
+	case NODE_CIPULSE4:
+		return "NODE_CIPULSE4";
+	case NODE_CIPULSE5:
+		return "NODE_CIPULSE5";
+	case NODE_CIPULSE6:
+		return "NODE_CIPULSE6";
+	default:
+		return "Unknown NODE";
 	}
 }
 
 
-CAstException::CAstException(const AstNode *p, const string s1, const string s2)
-: pnode(p), str1(s1), str2(s2), int1(0)
+CAstException::CAstException(const AstNode *p0, CAstSig *past, const char* msg)
+: pAst(past), pnode(p0), int1(0)
 {
+	char buf[64];
+	string unknown;
+	if (p0->str)	unknown = p0->str;
+	else {			// needed for calls from CSignals &CAstSig::Compute(const AstNode *pnode)
+		if (p0->type>256) { sprintf(buf, "%s", GetNodeType(p0->type).c_str()); unknown = buf; }
+		else			unknown = p0->type; 
+	}
+	str1 = " ";
+	str1 += unknown + " : " + msg + "\n";
+	outstr = str1;
 	makeOutStr();
 }
 
-CAstException::CAstException(const AstNode *p, const string s1, const int x, const string s2)
-: pnode(p), str1(s1), str2(s2), int1(x)
-{
-	makeOutStr();
+
+AstNode *_searchstr(AstNode *p, const char* pstr)
+{ // if there's a node with "type" in the tree, return that node
+	if (p)
+	{
+		if (p->str==pstr) return p;
+		if (p->child)
+			if (p->child->str==pstr) return p->child;
+			else return _searchstr(p->child, pstr);
+		else if (p->next)
+			if (p->next->str==pstr) return p->next;
+			else return _searchstr(p->next, pstr);
+	}
+	return NULL;
 }
 
-void CAstException::makeOutStr(const AstNode *p)
+int _findcol(AstNode *past, const char* pstr, int line)
+{
+	for (AstNode *pn=past; pn; pn = pn->next)
+	{
+		if (pn->line<line) continue;
+		AstNode *pm = _searchstr(pn->child, pstr);
+		if (pm) return pm->col;
+		else	return -1;
+	}
+	return -1;
+}
+
+void CAstException::makeOutStr()
 {
 	ostringstream oss;
-	oss << "Line " << p->line << ", Col " << p->column << ": " << str1;
+	int res;
+	oss << str1 + ' ';
 	if (!str2.empty())
-		oss << " \"" << str2 << '"';
+		oss << " \"" << str2 << "\" ";
+	if (pAst)
+	{
+		vector<int> lines;
+		vector<int> cols;
+		cols.push_back(pnode->col);
+		vector<string> strs;
+		CAstSig *p = pAst;
+		char *pstr=NULL;
+		while (p)
+		{
+			if (p->pCall && (pstr = p->pCall->str) )
+			{
+				strs.push_back(pstr);
+				if (p->pLast)
+				{
+					lines.push_back(p->pLast->line);
+					if ((res = _findcol(p->pAst, pstr, p->pLast->line))>0)
+						cols.push_back(res);
+				}
+			}
+			p=p->dad;
+		}
+		if (!strs.empty())
+		{
+			vector<string>::iterator it2 = strs.begin()+1;
+			vector<int>::iterator it3 = cols.begin();
+			//at this point strs can have more items than lines and cols, because son->son is son during CallUDF()
+			//so don't use strs iterator for for 
+			for (vector<int>::iterator it=lines.begin(); it!=lines.end(); it++, it2++, it3++)
+			{
+				oss << '\n' << "line " << *it << ", col " << *it3 << " in [udf] " << *it2;
+				if ((*it)==lines.back()) oss << ".aux";
+			}
+		}
+	}
+	else
+		oss << "\nIn line " << pnode->line << ", col " << pnode->col;
 	if (int1)
 		oss << int1;
 	outstr = oss.str();
+	if (pAst->pAst->type==NODE_BLOCK)
+		pAst->cleanup_sons();
 }
+
 
 
 bool GfInterrupted;	// needs to be global to interrupt even inside UDF
@@ -276,7 +443,7 @@ CSignals &CAstSig::Compute(void)
 		Tick1 = GetTickCount0();
 		return Sig;
 	} catch (const CAstException &e) {
-		char errmsg[500];
+		char errmsg[2048];
 		strncpy(errmsg, e.getErrMsg().c_str(), sizeof(errmsg)/sizeof(*errmsg));
 		errmsg[sizeof(errmsg)/sizeof(*errmsg)-1] = '\0';
 		throw errmsg;
@@ -306,31 +473,29 @@ AstNode *CAstSig::get_tree_on_line(const AstNode *pnode, int line)
 	return p;
 }
 
-#ifndef CISIGPROC  
 
+#ifndef CISIGPROC  
 #ifdef _WINDOWS
 void CAstSig::debug_appl_manager(const CAstSig *debugAstSig, int debug_status, int line)
 {
-	if (debug_status==2) // stepping
+	switch(debug_status)
+	{
+	case 2: // stepping
 		SendMessage(GetHWND_SIGPROC(), WM__DEBUG, (WPARAM)&debug_status, (LPARAM)line);
-	else
+		break;
+	default:
 		SendMessage(GetHWND_SIGPROC(), WM__DEBUG, (WPARAM)&debug_status, (LPARAM)debugAstSig);
-}
-
-int CAstSig::debugcatch(const AstNode *pBlock)// stopped at a breakpoint
-{
-	return 1;
+		break;
+	}
+#endif //CISIGPROC
 }
 
 #endif //_WINDOWS
 
-#endif
 
 
 void CAstSig::CallUDF(int debug_status)
 {	//pCall: ast used in the actual calling context
-FILE *fpp;
-
 	vector<CSignals*> holder;
 	vector<string> argout;
 	AstNode *pUDF = pEnv->UDFs[pCall->str];
@@ -353,17 +518,19 @@ FILE *fpp;
 				argout.push_back(pf->str);
 			break;
 		default:
-			throw CAstException(pOutParam, "Internal error! Unexpected node type - ", pOutParam->type);
+			throw CAstException(pOutParam, this, "Internal error! Unexpected node type - ", pOutParam->type);
 		}
 	}
 	if (lhs) 
+	{
 		for (nArgout=0, p=lhs->child; p; p=p->next, nArgout++) {}
-	else
-		nArgout=1;	
-	if ( nArgout > argout.size() ) {
-		oss << "Maximum number of return arguments for function '" << pCall->str << "' is " << argout.size() << ".";
-		throw CAstException(pCall, oss.str());
+		if ( nArgout > argout.size() ) {
+			oss << "Maximum number of return arguments for function '" << pCall->str << "' is " << argout.size() << ".";
+			throw CAstException(pCall, this, oss.str());
+		}
 	}
+	else
+		nArgout=argout.size();	
 
 	if (!debug_status)
 	{
@@ -375,10 +542,8 @@ FILE *fpp;
 		son->lhs = lhs;
 		son->lhsvar = lhsvar;
 		son->dad = this; // necessary when debugging exists with stepping (F10), the stepping can continue in tbe calling scope without breakpoints. --=>check 7/25
-		// This is probably not necessary 6/8/2017
-		if (pEnv->UDFs.find(pCall->str)==pEnv->UDFs.end())
-			if (!ReadUDF(pCall->str, pCall))	
-				return;
+		son->CallbackCIPulse = CallbackCIPulse;
+		son->CallbackHook = CallbackHook;
 
 		// input parameter binding
 		pa = pCall->child;
@@ -394,14 +559,18 @@ FILE *fpp;
 
 		son->Script = pCall->str;
 
-		fpp=fopen("c:\\temp\\memtrack","at");
-		fprintf(fpp,"son created 0x%x .. udfname=%s\n", son, son->Script.c_str());
-		fclose(fpp);
-
-		if (pEnv->DebugBreaks.find(pCall->str)!=pEnv->DebugBreaks.end())
+#ifndef CISIGPROC  
+		const char *baseudf = son->baseudfname();
+		if (baseudf && pEnv->DebugBreaks.find(baseudf)!=pEnv->DebugBreaks.end())
 		{	
-			son->nextBreakPoint = pEnv->DebugBreaks[pCall->str].front();
-			son->Script = pCall->str; // To send UDF name to the debugger window (a hack for debugger)
+//			son->Script = pCall->str; // To send UDF name to the debugger window (a hack for debugger)
+			// needed to change this way to avoid crash at the above line--pCall->str is ambiguous... is it the local udf or base udf... need
+			// needed to make local udf to make debugger window function scope, but 
+			// it has a problem when DebugBreaks does not store br points by local udf name... 
+			// Right now, it works but it may not show debugger window function scope properly.		Do something.. 9/21/2017 bjk
+			son->Script = baseudf; 
+
+			son->nextBreakPoint = pEnv->DebugBreaks[baseudf].front();
 			debugon = son->debugon = true;
 			debug_appl_manager(son, entering);
 		}
@@ -413,7 +582,7 @@ FILE *fpp;
 			son->debugon = true;
 			debug_appl_manager(son, entering);
 		}
-		for (p=pUDF->next; p; p=p->next)	// Check local functions in a UDF
+		for (p=pUDF->next; p; p=p->next)	// This is where local functions are registered in a UDF 
 			if (p->type == T_FUNCTION)	
 			{
 				if (!pLocalEnv)
@@ -424,95 +593,65 @@ FILE *fpp;
 				}
 				son->pEnv->UDFs[p->str] = p; // this updates the entire UDFs. Need to make it local...
 			}
+#endif
 	}
-	try {
-		CAstSig *tp;
-		p = son->pAst->type==NODE_BLOCK ? son->pAst->next: son->pAst;
-		son->son=son; // is this necessary? 7/25
-		// if debug_status==exiting, son is no longer valid
-		tp = debug_status==exiting ? this : son;
-		Beep(400, 300);
-		tp = son ? son : this ;
-		while (p)
-		{
-			tp->pLast=p;
-			tp->Compute(p);
-			if (tp->fExit) break;
-			p=p->next;
-		}
-		if (tp->debugon) //if in debug mode, exit here.
-		{
-			debug_appl_manager(tp, exiting);
-			if (tp->currentLine > tp->nextBreakPoint) // stepping out
-			{ 
-				if ( tp->dstatus==exiting)
-				{ // Exiting a function scope with stepping to the next higher scope
-					if (mainSpace.dbmapfind(tp->dad->GetScript().c_str()))
-					{
-						debug_appl_manager(tp->dad, entering); 
-						tp->dad->dstatus=stepping;
-						//if there's already break point set up, skip this line
-//						tp->dad->nextBreakPoint = 2; // to continue stepping in the dad scope from the beginning
-					}
-					else if (tp->dad && tp->dad->dad) 
-					{
-
-//						tp->dad->Script = tp->dad->dad->pCall->str; 
-						debug_appl_manager(tp->dad, entering); 
-						tp->dad->dstatus = stepping;
-//						tp->dad->nextBreakPoint = tp->dad->currentLine+1; // to ensure to continue stepping in the dad scope.
-					}
-					else
-						printf("\n");
-				}
-			}
-			else if (tp->dstatus==continuing) // continuing till the end
-			{
-				if (tp->dad && tp->dad->dad)
+	CAstSig *tp;
+	p = son->pAst->type==NODE_BLOCK ? son->pAst->next: son->pAst;
+	son->son=son; // is this necessary? 7/25
+	// if debug_status==exiting, son is no longer valid
+	tp = debug_status==exiting ? this : son;
+#ifdef _DEBUG
+	Beep(400, 300);
+#endif
+	tp = son ? son : this ;
+	while (p)
+	{
+		tp->pLast=p;
+		tp->Compute(p);
+		if (tp->fExit) break;
+		p=p->next;
+	}
+#ifdef XCOM
+#ifndef CISIGPROC  
+	if (tp->debugon) //if in debug mode, exit here.
+	{
+		debug_appl_manager(tp, exiting);
+		if (tp->currentLine > tp->nextBreakPoint) // stepping out
+		{ 
+			if ( tp->dstatus==exiting)
+			{ // Exiting a function scope with stepping to the next higher scope
+				if (mainSpace.dbmapfind(tp->dad->GetScript().c_str()))
 				{
 					debug_appl_manager(tp->dad, entering); 
+					tp->dad->dstatus=stepping;
+					//if there's already break point set up, skip this line
+//						tp->dad->nextBreakPoint = 2; // to continue stepping in the dad scope from the beginning
+				}
+				else if (tp->dad && tp->dad->dad) 
+				{
+
+//						tp->dad->Script = tp->dad->dad->pCall->str; 
+					debug_appl_manager(tp->dad, entering); 
+					tp->dad->dstatus = stepping;
+//						tp->dad->nextBreakPoint = tp->dad->currentLine+1; // to ensure to continue stepping in the dad scope.
 				}
 				else
 					printf("\n");
 			}
 		}
-	//	son->pEnv->UDFs.clear();	// clear it so that function definitions will not be deleted by the destructor of SubAstSig
-	} 
-	catch (const char *errmsg) 
-	{
-		son->pEnv->UDFs.clear();
-		throw CAstException(pCall, "Calling "+string(pCall->str)+"( )\n\nIn function definition:\n"+errmsg);
-	}
-	catch (CAstSig *main)
-	{
-		if (main->dstatus == aborting)
-		{ // forced exit from debug mode (Shift-F5) 7/27/2017
-			// Clean up procedure
-			// 1) go down to the youngest generation (in case aborting is requested in the middle generation)
-			// 2) clean up from young to old... if the top is reached, stop it.
-			// This operation assumes that only one "thread" of debug astsig exists--if debugging is done while another debugging is in progress,
-			// this will abort the entire debugging, which is OK at this point 7/27/2017 bjk
-			CAstSig *up, *tp = main; 
-			
-			for (; tp && tp->son; tp=tp->son)
+		else if (tp->dstatus==continuing) // continuing till the end
+		{
+			if (tp->dad && tp->dad->dad)
 			{
-				if (tp==tp->son) break; //Right now, son of son is son.... if you change it back to NULL, do it differently here... 7/27
+				debug_appl_manager(tp->dad, entering); 
 			}
-			while (mainSpace.vecast.size()>1 ||!up)
-			{
-		fpp=fopen("c:\\temp\\memtrack","at");
-		fprintf(fpp,"\t\t0x%x cleaned (abort)\n", tp);
-		fclose(fpp);
-				up = tp->dad;
-				debug_appl_manager(tp, exiting); 
-				delete tp;
-				tp = up;
-			}
-			tp->son = NULL;
-			throw "debug_abort";
+			else
+				printf("\n");
 		}
 	}
-
+#endif 
+#endif // #ifdef XCOM
+	//	son->pEnv->UDFs.clear();	// clear it so that function definitions will not be deleted by the destructor of SubAstSig
 	if (son)
 	{
 		//preparing output transfer
@@ -524,23 +663,45 @@ FILE *fpp;
 				if (*itstr==it->first) 
 					loop=false, cnt++, holder.push_back(&it->second);
 		}
-		//executing output transfer
-		if (lhs)
-			for (cnt=0, pa=lhs->child; pa; pa=pa->next, cnt++)
-				SetVar(pa->str, *holder[cnt]);
-		else if (lhsvar)
-			SetVar(lhsvar, *holder[0]);
-		else 
-			Sig = *holder[0];
-		if (!pOutParam)	Sig = son->Sig; // no output parameter specified.
+		if (holder.size()>0)
+		{
+			//executing output transfer
+			if (lhs)
+				for (cnt=0, pa=lhs->child; pa; pa=pa->next, cnt++)
+					SetVar(pa->str, *holder[cnt]);
+			else if (lhsvar)
+				SetVar(lhsvar, *holder[0]);
+			else 
+				Sig = *holder[0];
+			if (!pOutParam)	Sig = son->Sig; // no output parameter specified.
+		}
 	}
-	fpp=fopen("c:\\temp\\memtrack","at");
-	fprintf(fpp,"\t\t0x%x cleaned\n", son);
-	fclose(fpp);
-	//clean up
 	son->son=NULL;
 	delete son;
 	son=NULL;
+}
+
+void CAstSig::cleanup_sons()
+{
+#ifdef XCOM
+#ifndef CISIGPROC  
+	CAstSig *up=NULL, *tp = this; 
+	for (; tp && tp->son; tp=tp->son)
+	{
+		if (tp==tp->son) break; //Right now, son of son is son.... if you change it back to NULL, do it differently here... 7/27
+	}
+	while (mainSpace.vecast.size()>1)
+	{
+		up = tp->dad;
+		debug_appl_manager(tp, exiting); 
+		delete tp;
+		tp = up;
+	}
+	tp->son = NULL;
+	if (dstatus == aborting)
+		throw "debug_abort";
+#endif 
+#endif // #ifdef XCOM
 }
 
 void AddConditionMeetingBlockAsChain(CSignals *Sig, CSignal *psig, int iBegin, int iNow, CSignal &part)
@@ -552,16 +713,19 @@ void AddConditionMeetingBlockAsChain(CSignals *Sig, CSignal *psig, int iBegin, i
 	else					Sig->AddChain(part);
 }
 
-bool CAstSig::searchtree(AstNode *p, int type)
-{ // if there's a node with "type" in the tree, return true
+AstNode *CAstSig::searchtree(AstNode *p, int type)
+{ // if there's a node with "type" in the tree, return that node
 	if (p)
+	{
+		if (p->type==type) return p;
 		if (p->child)
-			if (p->child->type==type) return true;
+			if (p->child->type==type) return p->child;
 			else return searchtree(p->child, type);
 		else if (p->next)
-			if (p->next->type==type) return true;
+			if (p->next->type==type) return p->next;
 			else return searchtree(p->next, type);
-	return false;
+	}
+	return NULL;
 }
 
 bool CAstSig::isContiguous(body &ind, int &begin, int &end)
@@ -594,26 +758,26 @@ CSignals &CAstSig::extract(CSignal &in, body &isig)
 	{
 		out.SetComplex();
 		for (int i=0; i<isig.nSamples; i++)
-			out.cbuf[i] = in.cbuf[INT(isig.buf[i])-1];
+			out.cbuf[i] = in.cbuf[(int)isig.buf[i]-1];
 	}
 	else if (in.IsLogical())
 	{
 		out.MakeLogical();
 		for (int i=0; i<isig.nSamples; i++)
-			out.logbuf[i] = in.logbuf[INT(isig.buf[i])-1];
+			out.logbuf[i] = in.logbuf[(int)isig.buf[i]-1];
 	}
 	else if (in.IsString())
 	{
 		out.UpdateBuffer(isig.nSamples+1); // make room for null 
 		for (int i=0; i<isig.nSamples; i++)
-			out.strbuf[i] = in.strbuf[INT(isig.buf[i])-1];
+			out.strbuf[i] = in.strbuf[(int)isig.buf[i]-1];
 		out.strbuf[out.nSamples-1]=0;
 	}
 	else
 	{
 		out.SetReal();
 		for (int i=0; i<isig.nSamples; i++)
-			out.buf[i]=in.buf[INT(isig.buf[i])-1];
+			out.buf[i]=in.buf[(int)isig.buf[i]-1];
 	}
 	return (Sig=out);
 }
@@ -639,7 +803,6 @@ CSignals &CAstSig::getlhs(const AstNode *pnode, CSignals *inout, CSignals &indsi
 			int id1, id2;
 			if (inout->GetType()==CSIG_AUDIO) 
 			{
-				bool ch = searchtree(pnode->child, T_REPLICA);
 				if (p->type==NODE_IDLIST || (p->next && p->next->type==NODE_IDLIST) )
 				{          // s(tp1~tp2)   or  cel{n}(tp1~tp2)
 					int id0 = round(indsig.buf[0]/1000.*fs);
@@ -672,13 +835,13 @@ CSignals &CAstSig::getlhs(const AstNode *pnode, CSignals *inout, CSignals &indsi
 				else if (p->type==NODE_ARGS || (p->next && p->next->type==NODE_CALL) )
 				{ // s(id1:id2) or cel{n}(id1:id2)
 					// this must be contiguous
-					if (!isContiguous(indsig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
+					if (!isContiguous(indsig, id1, id2)) throw CAstException(pnode, this, "to replace audio signal, the indices must be contiguous.");
 					checkindexrange(pnode, inout, id1, "LHS (first)");
 					checkindexrange(pnode, inout, id2, "LHS (second)");
 					inout->Take(out, id1, id2);				  // id or time points?
 				}
 				else 
-					 throw CAstException(pnode, "Internal logic error (insertreplace:1) --unexpected node type.");
+					 throw CAstException(pnode, this, "Internal logic error (insertreplace:1) --unexpected node type.");
 			}
 			else
 			{
@@ -688,7 +851,7 @@ CSignals &CAstSig::getlhs(const AstNode *pnode, CSignals *inout, CSignals &indsi
 			}
 		}
 		else 
-			 throw CAstException(pnode, "Internal logic error (insertreplace:2) --unexpected node type.");
+			 throw CAstException(pnode, this, "Internal logic error (insertreplace:2) --unexpected node type.");
 	}
 #endif //CISIGPROC
 	return (Sig=out);
@@ -698,9 +861,11 @@ CSignals &CAstSig::getlhs(const AstNode *pnode, CSignals *inout, CSignals &indsi
 bool CAstSig::checkcond(const AstNode *p)
 {
 	Compute(p);
-	if (!Sig.IsScalar())	throw CAstException(p, "--conditional op requires a scalar.");
-	if (Sig.IsLogical()) return Sig.logbuf[0];
-	else				return !(Compute(p).value()==0.);
+	if (!Sig.IsScalar())	throw CAstException(p, this, "--conditional op requires a scalar.");
+	if (Sig.IsLogical()) 
+		return Sig.logbuf[0];
+	else				
+		return !(Compute(p).value()==0.);
 }
 
 void CAstSig::checkindexrange(const AstNode *pnode, CSignal *inout, int id, string errstr)
@@ -710,14 +875,14 @@ void CAstSig::checkindexrange(const AstNode *pnode, CSignal *inout, int id, stri
 		string out("Index on ");
 		out += errstr;
 		out += " out of range.";
-		throw CAstException(pnode, out);
+		throw CAstException(pnode, this, out);
 	}
 }
 
 CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig)
 {
 	if (!indsig.IsLogical() && inout->GetType()== CSIG_AUDIO && sec.GetType()!=CSIG_AUDIO && sec.GetType()!=CSIG_EMPTY)
-		throw CAstException(pnode, "Referencing timepoint(s) in an audio variable requires another audio signal on the RHS.");
+		throw CAstException(pnode, this, "Referencing timepoint(s) in an audio variable requires another audio signal on the RHS.");
 	bool logicalindex = indsig.IsLogical();
 	AstNode *p = pnode->alt; 
 	if (inout->GetType()!= CSIG_AUDIO && indsig.IsLogical())
@@ -738,13 +903,19 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 			inout->Insert(indsig.value(), sec);
 		else
 		{
-			if (sec.GetType()!=CSIG_SCALAR) throw CAstException(pnode, "RHS must be a scalar");
+			if (sec.GetType()!=CSIG_SCALAR) throw CAstException(pnode, this, "RHS must be a scalar");
 			int id = (int)(indsig.value()+.5);
 			checkindexrange(pnode, inout, id, "LHS");
-			inout->buf[id-1] = sec.value();
+			if (sec.IsComplex()) 
+			{
+				inout->SetComplex();
+				inout->cbuf[id-1]=sec.cbuf[0];
+			}
+			else
+				inout->buf[id-1] = sec.value();
 		}
 	}
-	else
+	else // not done yet if sec is complex
 	{
 		if (pnode->type==NODE_IXASSIGN || pnode->type==NODE_INITCELL )
 		{
@@ -752,9 +923,9 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 			if (inout->GetType()==CSIG_AUDIO) 
 			{
 #ifndef CISIGPROC
-				bool ch = searchtree(pnode->child, T_REPLICA);
+				AstNode *tp = searchtree(pnode->child, T_REPLICA);
 #else
-				bool ch(false);
+				AstNode *tp(NULL);
 #endif //CISIGPROC
 
 				if (p->type==NODE_IDLIST || (p->next && p->next->type==NODE_IDLIST) )
@@ -775,7 +946,7 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 					else // s(id1:id2) or cel{n}(id1:id2)
 					{
 						// this must be contiguous
-						if (!isContiguous(indsig, id1, id2)) throw "to replace audio signal, the indices must be contiguous.";
+						if (!isContiguous(indsig, id1, id2)) throw CAstException(pnode, this, "to replace audio signal, the indices must be contiguous.");
 						checkindexrange(pnode, inout, id1, "LHS (first)");
 						checkindexrange(pnode, inout, id2, "LHS (second)");
 						inout->Replace(sec, 1000.*(id1-1)/inout->GetFs(), 1000.*(id2-1)/inout->GetFs());
@@ -783,7 +954,7 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 				}
 				else if (!p->next && !p->str) // if s(conditional) is on the LHS, the RHS must be either a scalar, or the replica, i.e., s(conditional)
 				{
-					if (!ch && !indsig.IsLogical()) throw CAstException(pnode, "Internal logic error (insertreplace:0)--s(conditional?).");
+					if (!tp && !indsig.IsLogical()) throw CAstException(pnode, this, "Internal logic error (insertreplace:0)--s(conditional?).");
 					if (sec.IsScalar()) 
 					{
 						double val = sec.value();
@@ -806,14 +977,14 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 					}
 				}
 				else 
-					 throw CAstException(pnode, "Internal logic error (insertreplace:1) --unexpected node type.");
+					 throw CAstException(pnode, this, "Internal logic error (insertreplace:1) --unexpected node type.");
 			}
 			else
 			{
 				// v(1:5) or v([contiguous]) = (any array) to replace
 				// v(1:2:5) or v([non-contiguous]) = RHS; //LHS and RHS must match length.
 				bool contig = isContiguous(indsig, id1, id2);
-				if (!contig && sec.nSamples!=1 && sec.nSamples!=indsig.nSamples) throw "the number of replaced items must be the same as that of replacing items."; 
+				if (!contig && sec.nSamples!=1 && sec.nSamples!=indsig.nSamples) throw CAstException(pnode, this, "the number of replaced items must be the same as that of replacing items."); 
 				if (contig)
 					inout->replace(sec, id1-1, id2-1);
 				else 
@@ -821,7 +992,7 @@ CAstSig &CAstSig::insertreplace(const AstNode *pnode, CSignal *inout, CSignals &
 			}
 		}
 		else 
-			 throw CAstException(pnode, "Internal logic error (insertreplace:2) --unexpected node type.");
+			 throw CAstException(pnode, this, "Internal logic error (insertreplace:2) --unexpected node type.");
 	}
 	return *this;
 }
@@ -837,15 +1008,15 @@ AstNode *CAstSig::ReadUDF(const char *udf_filename, const AstNode *pnode)
 	try 
 	{
 		CAstSig aux(pEnv);
-		aux.SetNewFile(auxfile);
+		aux.pAst = aux.SetNewScriptFromFile(udf_filename, auxfile);
 		fclose(auxfile);
 		//If a udf contains son-function(s) on the bottom, it's NODE_BLOCK
 		AstNode *p = (aux.pAst->type == NODE_BLOCK) ? aux.pAst->next : aux.pAst;
 		for (AstNode *pp=p; pp; pp=pp->next)
 			if (pp->type != T_FUNCTION)
-				throw CAstException(pp, "All codes in AUX file must be inside function definitions.");
+				throw CAstException(pp, this, "All codes in AUX file must be inside function definitions.");
 		if (strcmp(udf_filename, p->str)) // p is NULL for local function call and it will crash.....8/1/
-			throw CAstException(pnode, "inconsistent function name");
+			throw CAstException(pnode, this, "inconsistent function name", string(string(string(udf_filename)+" vs ")+p->str).c_str());
 
 		pEnv->UDFs[udf_filename] = p;	// p->next might be valid, which is a local function. It will be taken care of in CallSub()
 		// The following should be after all the throws. Otherwise, the UDF AST will be dangling.
@@ -859,12 +1030,15 @@ AstNode *CAstSig::ReadUDF(const char *udf_filename, const AstNode *pnode)
 	catch (const char *errmsg) 
 	{
 		fclose(auxfile);
-		throw CAstException(pnode, "Calling "+string(pnode->str)+"( )\n\nIn file '"+udf_filename+"':\n"+errmsg);
+		if (pnode->str)
+			throw CAstException(pnode, this, "Calling "+string(pnode->str)+"( )\n\nIn file '"+udf_filename+"':\n"+errmsg);
+		else
+			throw CAstException(pnode, this, "Calling "+string(pnode->child->str)+"( )\n\nIn file '"+udf_filename+"':\n"+errmsg);
 	} 
 	catch (const CAstException &e) 
 	{
 		fclose(auxfile);
-		throw CAstException(pnode, "Calling "+string(pnode->child->str)+"( )\n\nIn file '"+udf_filename+"':\n"+e.getErrMsg());
+		throw CAstException(pnode, this, "Calling "+string(pnode->child->str)+"( )\n\nIn file '"+udf_filename+"':\n"+e.getErrMsg());
 	}
 }
 
@@ -873,16 +1047,31 @@ AstNode *CAstSig::ReadUDF(const char *udf_filename, const AstNode *pnode)
 //#define  T_STRING 285
 //#define  T_ID 286
 
-bool CAstSig::CheckPreparCallUDF(const AstNode *pnode)
+bool CAstSig::CheckPrepareCallUDF(int type, const AstNode *pnode)
 {
 	char *pstr;
-	if ( (pstr=pnode->child->str) && ((pEnv->UDFs.find(pstr)==pEnv->UDFs.end() && ReadUDF(pstr, pnode)) ||	pEnv->UDFs.find(pstr)!=pEnv->UDFs.end() ) )
+	if (type)	pstr=pnode->str;
+	else	pstr=pnode->child->str;
+	if (!pstr) return false;
+	AstNode *tp = ReadUDF(pstr, pnode);
+	//non-NULL tp means pstr is a UDF file
+	//also it checks if pstr is a local function
+	if ( tp || pEnv->UDFs.find(pstr)!=pEnv->UDFs.end() )
 	{
-		pCall = (AstNode*)pnode->child;
-		if (pnode->str) // LHS is a variable name
-			lhsvar = pnode->str, lhs = NULL;
-		else	// LHS is a vector
-			lhs = pnode->alt, lhsvar = NULL;
+		if (type)
+		{
+			pCall = (AstNode*)pnode;
+			lhs = NULL;
+			lhsvar = NULL;
+		}
+		else
+		{
+			pCall = (AstNode*)pnode->child;
+			if (pnode->str) // LHS is a variable name
+				lhsvar = pnode->str, lhs = NULL;
+			else	// LHS is a vector
+				lhs = pnode->alt, lhsvar = NULL;
+		}
 		currentLine = pnode->line;
 		CallUDF();
 		return true;
@@ -890,20 +1079,46 @@ bool CAstSig::CheckPreparCallUDF(const AstNode *pnode)
 	return false;
 }
 
+const char* CAstSig::baseudfname()
+{
+	CAstSig *p = dad;
+	while (p)
+	{
+		if (!p->dad) break;
+		p = p->dad;
+	}
+	// At this point, p is ast used when the call was made in the base workplace.
+	if (p->pAst)
+		return p->pAst->str; 
+	else
+		return NULL;
+}
+
 bool CAstSig::IsThisBreakpoint(const AstNode *pnode)
 {
+	if (!pCall) return false;
 	CAstSig *tp = son ? son : this;
+	if (!tp) return false;
 	if (tp->pEnv->curLine == pnode->line) return true;
-	vector<int> bpList = pEnv->DebugBreaks[tp->Script];
-	for (vector<int>::iterator it = bpList.begin(); it!=bpList.end(); it++)
-	{
-		if (pnode->line==*it) return true;
+	try {
+		const char* pstr = tp->baseudfname();
+		if (!pstr) return false;
+		vector<int> bpList = pEnv->DebugBreaks.at(pstr);
+		for (vector<int>::iterator it = bpList.begin(); it!=bpList.end(); it++)
+		{
+			if (pnode->line==*it) return true;
+		}
+		return false;
 	}
-	return false;
+	catch ( out_of_range oor)
+	{	
+		return false; 	}
 }
 
 int CAstSig::breakpoint(const AstNode *pnode)
 {
+#ifdef XCOM
+#ifndef CISIGPROC  
 	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE); 
 	HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE); 
 	char buf[256];
@@ -914,7 +1129,7 @@ int CAstSig::breakpoint(const AstNode *pnode)
 	tp = son ? son : this;
 
 	// if debugger is on
-	if  ( tp->IsThisBreakpoint(pnode) ||  tp->dstatus==stepping ||  tp->dstatus==stepping_in)
+	if ( ( pEnv->DebugBreaks.size()>0) && (tp->IsThisBreakpoint(pnode) ||  tp->dstatus==stepping ||  tp->dstatus==stepping_in))
 	{// if current line is nextBreakPoint, break 
 		debug_appl_manager(tp, stepping, pnode->line);
 		mainSpace.ShowWS_CommandPrompt(tp);
@@ -929,7 +1144,7 @@ int CAstSig::breakpoint(const AstNode *pnode)
 				if (tar[0]=="step")	
 				{
 					tp->currentLine = pnode->line+1;
-					if (tp->pLast->type==T_IF || pnode->next) 
+					if (tp->pLast->type==T_IF || tp->pLast->type==T_FOR || tp->pLast->type==T_WHILE || pnode->next) 
 						tp->dstatus = stepping;
 					else	
 						tp->dstatus = exiting;
@@ -948,11 +1163,11 @@ int CAstSig::breakpoint(const AstNode *pnode)
 				else if (tar[0]=="cont" || tar[0]=="r2cu")
 				{
 					tp->dstatus = continuing;
-					for (vector<int>::iterator it = pEnv->DebugBreaks[tp->Script].begin(); it!=pEnv->DebugBreaks[tp->Script].end(); it++)
+					for (vector<int>::iterator it = pEnv->DebugBreaks[pCall->str].begin(); it!=pEnv->DebugBreaks[pCall->str].end(); it++)
 					{
 						if (tp->currentLine>=*it) 
 						{
-							if (it == pEnv->DebugBreaks[tp->Script].end()-1)
+							if (it == pEnv->DebugBreaks[pCall->str].end()-1)
 							{	tp->nextBreakPoint = 0xffff; break; }
 							continue;
 						}
@@ -966,10 +1181,16 @@ int CAstSig::breakpoint(const AstNode *pnode)
 					return 1;
 				}
 			}
+			//if it reaches this line, dstatus should be set to null
+			DEBUG_STATUS temp = tp->dstatus;
+			tp->dstatus = null;
 			mainSpace.computeandshow(buf);
+			tp->dstatus = temp;
 		}
 		
 	}
+#endif //CISIGPROC
+#endif //XCOM
 	return 1;
 }
 
@@ -983,9 +1204,9 @@ CSignals &CAstSig::Compute(const AstNode *pnode)
 	if (!pnode) 
 	{	Sig.Reset(1); return Sig; }
 	if (GfInterrupted)
-		throw CAstException(pnode, "Script execution has been interrupted.");
+		throw CAstException(pnode, this, "Script execution has been interrupted.");
 	//I'm not sure if this is the exhaustive list of l-value statements--- check... 8/1/2017 bjk
-	if (pnode->type=='=' || pnode->type==T_FOR || pnode->type==T_WHILE || pnode->type==NODE_BLOCK || pnode->type==NODE_INITCELL || pnode->type==NODE_IXASSIGN || pnode->type==NODE_IDLIST)
+	if (pnode->type=='=' || pnode->type==T_FOR || pnode->type==T_WHILE || pnode->type==NODE_INITCELL || pnode->type==NODE_IXASSIGN || pnode->type==NODE_IDLIST)
 		breakpoint(pnode);
 	AstNode *p = pnode->child;
 try {
@@ -1000,11 +1221,11 @@ try {
 	case T_ID:
 		if (p) {	// celled-CSignals object with an index. /* child is for cell array index */  
 			isig = Compute(p);
-			if (!isig.IsScalar())	throw CAstException(p, "Array index must be a scalar.");
+			if (!isig.IsScalar())	throw CAstException(p, this, "Array index must be a scalar.");
 			int id = (int)(isig.value()+.5);
-			if (id<=0) throw CAstException(p, "Array index must be a positive integer.");
+			if (id<=0) throw CAstException(p, this, "Array index must be a positive integer.");
 			if (!(psig = RetrieveVar(pnode->str)))
-				throw CAstException(pnode, "Unknown array - ", pnode->str);
+				throw CAstException(pnode, this, "Unknown array - ", pnode->str);
 			tsig = psig->cell.at(id-1); // because AUX is one-based
 			if (p->next) // x{n}(id1:step:id2)  or x{n}(index_array)
 			{
@@ -1016,27 +1237,44 @@ try {
 //			Sig.cell.clear(); // if it is a single extraction, any trailing cells should be removed. // ==>This is probably not necessary 4/23/2016 bjk 
 		} else { // a celled-CSignals object without an index or an CSignals object with an extractor operator
 			if (!(psig = RetrieveVar(pnode->str)))
-				throw CAstException(pnode, "Unknown variable - ", pnode->str);
+				throw CAstException(pnode, this, "Unknown variable - ", pnode->str);
 			Sig = *psig;
 		}
 		break;
-#ifndef CISIGPROC  
 	case T_REPLICA:
-		Sig = replica;
+		if (pnode->str)
+		{
+			if (p)
+				SetVar(pnode->str, Sig = Compute(p));
+			else
+				SetVar(pnode->str, Sig = replica);
+		}
+		else
+		{
+			if (p)
+				Sig = Compute(p);
+			else
+				Sig = replica;
+		}
 		break;
-#endif //CISIGPROC
 	case '=':
-		if (!p)	throw CAstException(pnode, "Internal error: Empty assignment!");
+		if (!p)	throw CAstException(pnode, this, "Internal error: Empty assignment!");
 		// if there's a 292 node (REPLICA) down in p, do something (here, NODE_INITCELL and NODE_IXASSIGN)
 		if (searchtree(p, T_REPLICA))
 		{
 			if ((psig = RetrieveVar(pnode->str)))
 				replica = *psig;
 			else
-				throw CAstException(p, "LHS variable not available to replicate on the RHS.");
+				throw CAstException(p, this, "LHS variable not available to replicate on the RHS.", pnode->str);
+			AstNode *tp = searchtree(p, NODE_CALL);
+			if (!tp->str)
+			{
+				tp->str = (char*)malloc(strlen(pnode->str)+1);
+				strcpy(tp->str, pnode->str);
+			}
 		}
 		// if child of pnode is string (i.e., a="bjsk") go directly SetVar; otherwise, check if p is a built-in function (NODE_FUNCTION) or UDF
-		if (p->type==T_STRING || !CheckPreparCallUDF(pnode))
+		if (p->type==T_STRING || !CheckPrepareCallUDF(0, pnode))
 			SetVar(pnode->str, Compute(p));
 		break;
 	case NODE_INITCELL: 
@@ -1060,11 +1298,19 @@ try {
 		else
 		{ //x{2}(20~50)=silence(10)
 			isig = Compute(pnode->alt);
-			if (!isig.IsScalar())	throw CAstException(p->alt, "Cell index must be a scalar.");
+			if (!isig.IsScalar())	throw CAstException(p->alt, this, "Cell index must be a scalar.");
 			int id = (int)(isig.value()+.5);
 			CSignals *psig = RetrieveVar(pnode->str);
-			if (!psig) throw CAstException(pnode, "Cell variable not available.");
-			if (id>(int)psig->cell.size()) throw CAstException(pnode, "Cell index is out of range.");
+			if (!psig) throw CAstException(pnode, this, "Cell variable not available.", pnode->str);
+			if (id>(int)psig->cell.size()) 
+			{
+				string str;
+				if (pnode->alt->str)
+					sformat(str, "%s", pnode->alt->str);
+				else
+					sformat(str, "%d", id);
+				throw CAstException(pnode, this, "Cell index is out of range.", str);
+			}
 			CSignal *cellsig = RetrieveCell(pnode->str, id);
 			tsig = Compute(p); 
 			if (!cellsig) 
@@ -1139,10 +1385,10 @@ try {
 		blockCell(pnode,  Sig);
 		// Now Sig always has the first operand
 		checkAudioSig(pnode,  Sig);
-		if (!Sig.next && tsig.next) throw CAstException(p->next, "Mono signal should be scaled with a scalar.");
+		if (!Sig.next && tsig.next) throw CAstException(p->next, this, "Mono signal should be scaled with a scalar.");
 		if (tsig.nSamples > 1 || (tsig.next && tsig.next->nSamples > 1) )	
-			if (Sig.next)	throw CAstException(p->next, "Level scaling operand should be scalar. (Did you forget to put ; between two values?)");
-			else			throw CAstException(p->next, "Level scaling operand should be scalar.");
+			if (Sig.next)	throw CAstException(p->next, this, "Level scaling operand should be scalar. (Did you forget to put ; between two values?)");
+			else			throw CAstException(p->next, this, "Level scaling operand should be scalar.");
 		
 		rms = -Sig.RMS();
 		if (Sig.next) isig = -Sig.next->RMS(), rms.SetNextChan(&isig);
@@ -1164,7 +1410,7 @@ try {
 		Compute(p);
 		for (int k(0); k<isig.nSamples-1; k++)
 			if (isig.buf[k] > Sig.alldur())
-				throw CAstException(p->next, "Level scaling operand timepoint should be within the time range of the operand.");
+				throw CAstException(p->next, this, "Level scaling operand timepoint should be within the time range of the operand.");
 		tsig = Sig.Reset(GetFs()).Interp(tsig, isig);
 		Compute(p);
 		Sig *= tsig;
@@ -1173,7 +1419,7 @@ try {
 		tsig = Compute(p->next);
 		blockCell(pnode,  Sig);
 		if (!tsig.IsScalar())
-			throw CAstException(p->next, "Second operand of '>>' must be a scalar.");
+			throw CAstException(p->next, this, "Second operand of '>>' must be a scalar.");
 		Compute(p);
 		checkAudioSig(pnode,  Sig);
 		Sig >>= tsig.value();
@@ -1182,7 +1428,7 @@ try {
 		tsig = Compute(p->next);
 		blockCell(pnode,  Sig);
 		if (!tsig.IsScalar())
-			throw CAstException(p->next, "Second operand of '<<' must be a scalar.");
+			throw CAstException(p->next, this, "Second operand of '<<' must be a scalar.");
 		Compute(p);
 		checkAudioSig(pnode,  Sig);
 		Sig <<= tsig.value();
@@ -1190,8 +1436,8 @@ try {
 	case T_OP_CONCAT:
 		tsig = Compute(p->next);
 		Compute(p);
-		if ( (bool) (tsig.GetType()-CSIG_CELL) ^ (bool) (Sig.GetType()-CSIG_CELL) )
-			throw CAstException(pnode, "Both operands must be cell or non-cell to be concatenated.");
+		if ( (tsig.GetType()!=CSIG_CELL) ^ (Sig.GetType()!=CSIG_CELL) )
+			throw CAstException(pnode, this, "Both operands must be cell or non-cell to be concatenated.");
 		if (tsig.GetType()==CSIG_CELL)
 		{
 			for (size_t k=0; k<tsig.cell.size(); k++)
@@ -1236,7 +1482,7 @@ try {
 		break;
 	case NODE_BLOCK:
 		for (p=pnode->next; p; p=p->next)
-			Compute(p);	
+			Compute(p);
 		break;
 	case T_IF:
 		// if condition, action, end
@@ -1262,16 +1508,12 @@ try {
 		
 		if (p)
 			if (checkcond(p))	
-			{
 				Compute(p->next);
-			}
 			else				
 			{
 				if (!p->alt) break;
 				Compute(p->alt);
 			}
-		else
-			throw CAstException(pnode, "T_IF: node with NULL conditional. Please report this bug."); 
 		break;
 	case T_SWITCH:
 		//tsig = Compute(p);
@@ -1322,7 +1564,7 @@ try {
 					Sig = SubAstSig.Compute();
 			}
 		} catch (const char *errmsg) {
-			throw CAstException(pnode, "Calling sigma( )\n\nIn sigma expression:\n"+string(errmsg));
+			throw CAstException(pnode, this, "Calling sigma( )\n\nIn sigma expression:\n"+string(errmsg));
 		}
 		break;
 	case T_RETURN:
@@ -1354,7 +1596,7 @@ try {
 			if (Sig.GetType()!=CSIG_AUDIO && Sig.GetType()!=CSIG_SCALAR)
 			{
 				//if it is scalar, allow it as an exception (so that stereo scaling can be put in..)
-				throw CAstException(p, "Audio signal required to construct a stereo signal. (Or, scaling for stereo provided for a mono signal)");
+				throw CAstException(p, this, "Audio signal required to construct a stereo signal. (Or, scaling for stereo provided for a mono signal)");
 			}
 			psig->SetNextChan(&Sig);
 		}
@@ -1369,7 +1611,7 @@ try {
 #endif //CISIGPROC
 	case NODE_EXTRACT:
 		psig = RetrieveVar(p->str);
-		if (!psig) throw CAstException(pnode, "variable not available.");
+		if (!psig) throw CAstException(p, this, "variable not available.");
 		checkAudioSig(pnode,  *psig);
 #ifndef CISIGPROC
 		if (searchtree(p, T_ENDPOINT))
@@ -1401,19 +1643,14 @@ try {
 		// when part of variable (i.e., range of index) is on the LHS, 
 		// i.e., x(n)=(something), x(m:n)=(something), or x(t1~t2)=(something)
 		psig = RetrieveVar(pnode->str);
-		if (!psig) throw CAstException(pnode, "variable not available.");
+		if (!psig) throw CAstException(pnode, this, "variable not available.");
 		check = pnode->next!=NULL; // this is from T_ID '(' condition ')' '=' exp_range
 		if (pnode->alt->type==NODE_ARGS) // x(5) = something
 			isig = Compute(pnode->alt->child);
 		else 
 			isig = Compute(pnode->alt);
 		if (!p)
-			throw CAstException(pnode, "Internal error: Empty assignment!");
-		//if (p->alt && p->next->alt)
-		//	;// cell array indexed assignment
-		//else if (!check && !(p->next && p->next->child && !p->next->child->next))
-		//	throw CAstException(pnode, "Indexed assignment must have one argument.");
-
+			throw CAstException(pnode, this, "Internal error: Empty assignment!");
 		if (searchtree(p, T_REPLICA))
 			replica = getlhs(pnode, psig, isig);
 		//rhs compute should be done after replica is ready
@@ -1429,10 +1666,11 @@ try {
 	case NODE_CALL: // 1) Built-in functions, 2) UDFs, 3) Extraction by index
 		psig = RetrieveVar(pnode->str);
 		// assert p ? When can p be NULL and come here?
+		// --> p must not be NULL, no assert p needed. 8/24/2017
 
 		if (psig && !p->next /* only one argument */) 
 		{
-			if (psig->GetType()==CSIG_CELL) throw CAstException(p, "A cell array cannot be accessed with ( ).");
+			if (psig->GetType()==CSIG_CELL) throw CAstException(p, this, "A cell array cannot be accessed with ( ).");
 #ifndef CISIGPROC
 			if (searchtree(p, T_ENDPOINT))
 			{
@@ -1496,10 +1734,7 @@ try {
 
 		if (pstr=pnode->str)
 		{
-			if ((pEnv->UDFs.find(pstr)==pEnv->UDFs.end() && ReadUDF(pstr, pnode)) ||
-				pEnv->UDFs.find(pstr)!=pEnv->UDFs.end() )
-				pCall = (AstNode*)pnode, lhs = NULL, lhsvar = NULL, CallUDF();
-			else
+			if (!CheckPrepareCallUDF(1,pnode))
 				HandleAuxFunctions(pnode);
 		}
 		else
@@ -1512,19 +1747,25 @@ try {
 		if (CallbackCIPulse)
 			CallbackCIPulse(pnode, this);
 		else
-			throw CAstException(pnode, "Internal error! CI Pulse without handler!");
+			throw CAstException(pnode, this, "Internal error! CI Pulse without handler!");
 		break;
 	case T_FUNCTION:
 		// should have already been removed by Compute(void)
-		throw CAstException(pnode, "Internal error! Unexpected node - T_FUNCTION");
+		throw CAstException(pnode, this, "Internal error! Unexpected node - T_FUNCTION");
 		break;
 	default:
-		throw CAstException(pnode, "Internal error! Unknown node type - ", pnode->type);
+		throw CAstException(pnode, this, "Internal error! Unknown node type - ", pnode->type);
 	}
 } catch (const char *errmsg) {
-	throw CAstException(pnode, errmsg);
+	if (strcmp(errmsg,"debug_abort"))
+		throw CAstException(pnode, this, errmsg);
+	else
+		throw errmsg;
 } catch (const exception &e) {
-	throw CAstException(pnode, string("Internal error! ") + e.what());
+	throw CAstException(pnode, this, string("Internal error! ") + e.what());
+} catch (CAstSig *main) {
+	if (main->dstatus == aborting)
+		main->cleanup_sons();
 }
 	return Sig;
 }
@@ -1592,9 +1833,23 @@ CAstSig &CAstSig::AddCell(const char *name, const CSignals &sig)
 //	if (psig==NULL) // new variable
 	{
 		CSignals tp(sig);
-		Sig.cell.push_back(tp);
+		CSignals *pvar=NULL;
+		if ((pvar=GetVar(name)))
+		{
+			pvar->cell.push_back(tp);
+		}
+		else
+			Sig.cell.push_back(tp);
 		Sig.Reset();
-		if (name)	SetVar(name, Sig);
+		if (name)	
+		{
+			if (pvar) SetVar(name, *pvar);
+			else
+			{
+				SetVar(name, Sig);
+				Sig.cell.pop_back();
+			}
+		}
 	}
 	return *this;
 }
@@ -1629,9 +1884,12 @@ AstNode *CAstSig::RetrieveUDF(const char *fname)
 }
 
 
-CSignals &CAstSig::GetVar(const char *name)
+CSignals *CAstSig::GetVar(const char *name)
 {
-	return Vars[name];
+	if (Vars.find(name)!=Vars.end())
+		return &Vars[name];
+	else
+		return NULL;
 }
 
 
@@ -1690,6 +1948,7 @@ FILE *CAstSig::OpenFileInPath(string fname, const string ext, string &fullfilena
 
 string CAstSig::MakeFilename(string fname, const string ext)
 {
+	trim(fname,' ');
 	size_t pdot = fname.rfind('.');
 	if (pdot == fname.npos || pdot < fname.length()-4)
 		fname += "." + ext;
@@ -1767,6 +2026,30 @@ void CAstSig::EnumVar(vector<string> &var)
 	var.clear();
 	for (map<string, CSignals>::iterator what=Vars.begin(); what!=Vars.end(); what++)
 		var.push_back(what->first);
+}
+
+
+void CAstSig::checkNumArgs(const AstNode *pnode, const AstNode *p, const char** FuncSigs, const int minArgs, const int maxArgs)
+{
+	ostringstream msg;
+	int nArgs(0);
+	for (const AstNode *cp=p; cp; cp=cp->next)
+		++nArgs;
+	msg << "must have ";
+	if (minArgs == 0 && maxArgs == 0 && nArgs > 0)
+		msg << "no argument.";
+	else if (nArgs < minArgs && maxArgs == 0)
+		msg << "at least " << minArgs << (minArgs>1 ? " arguments." : " argument.");
+	else if (nArgs < minArgs || maxArgs > 0 && nArgs > maxArgs) {
+		msg << minArgs;
+		for (int i=minArgs+1; i<maxArgs; ++i)
+			msg << ", " << i;
+		if (minArgs != maxArgs)
+			msg << " or " << maxArgs;
+		msg << (maxArgs>1 ? " arguments." : " argument.");
+	} else
+		return;
+	throw CAstException(pnode, this, FuncSigs, msg.str());
 }
 
 CSignals *CAstSig::GetSig(const char *var)

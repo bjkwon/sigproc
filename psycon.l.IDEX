@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "psycon.yacc.h"
-#include "cipsycon.tab.h"
+#include "psycon.tab.h"
 #define strdup _strdup
 #define LEX_STRING_MAX_INITIAL 1024
 
@@ -19,8 +19,8 @@ int appendLexString(void);
 %s PARENTH
 %s BRACE
 ID	[[:alpha:]][[:alnum:]_]{0,30}
+IDEX [+-<>]{0,4}[[:alpha:]][[:alnum:]_]{0,30}
 NUM	[[:digit:]]+"."?[[:digit:]]*([eE][+-]?[[:digit:]]+)?|"."[[:digit:]]+
-HOOKCMD #[\x20-\x7e]{0,100}
 %%
 %{
 	yylloc.first_line = yylloc.last_line;
@@ -81,7 +81,7 @@ HOOKCMD #[\x20-\x7e]{0,100}
 	yy_pop_state();
 	return (unsigned char)yytext[0];
 	}
-if|else|elseif|end|while|for|break|continue|switch|case|otherwise|function|endfunction|return|sigma|"=="|"!="|"<="|">="|">>"|"<<"|"&&"|"||"|"++"|"+="|"-="|"*="|"/="|"^="|"@="|"@@="|"++="|".."|us|ms  {
+if|else|elseif|end|while|for|break|continue|switch|case|otherwise|function|endfunction|return|sigma|"=="|"!="|"<="|">="|">>"|"<<"|"&&"|"||"|"++"|"+="|"-="|"*="|"/="|"^="|"@="|"@@="|"++="|".."  {
 	yylloc.last_column += yyleng;
 	return getTokenID(yytext);
 	}
@@ -90,10 +90,10 @@ if|else|elseif|end|while|for|break|continue|switch|case|otherwise|function|endfu
 	yylval.str = strdup(yytext);
 	return T_ID;
 	}
-{HOOKCMD}	{
+{IDEX}	{
 	yylloc.last_column += yyleng;
 	yylval.str = strdup(yytext);
-	return T_HOOKCMD;
+	return T_IDEX;
 	}
 "//"[^\n]* {	/* eat up a comment line */
 	yylloc.last_column += yyleng;

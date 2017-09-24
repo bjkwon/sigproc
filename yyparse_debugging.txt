@@ -1,3 +1,14 @@
+new as of 8/24/2017
+
+1) Add this at the top of psycon.tab.c
+#include "aa.c"
+
+2) Add this right above switch (yyn)
+yyparse_trace("file_name")
+
+
+
+====old
 1) Add this near the top of yyparse()
 in yyparse()
 in psycon.tab.c

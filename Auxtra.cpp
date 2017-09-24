@@ -24,17 +24,11 @@ AUDFRET_EXP void ReplaceStr(string &str, const char *from, const char *to) { Rep
 
 int graffyLoaded=0;
 HMODULE hLib;
-void checkNumArgs(const AstNode *pnode, const AstNode *p, const char** FuncSigs, const int minArgs, const int maxArgs);
 
 CSignals fourth, third, first, second;
 DWORD colordw;
 double blocksize;
 
-void blockCell(const AstNode *pnode, CSignals &checkthis);
-void blockScalar(const AstNode *pnode, CSignals &checkthis);
-void blockString(const AstNode *pnode, CSignals &checkthis);
-void blockComplex(const AstNode *pnode, CSignals &checkthis);
-void checkString(const AstNode *pnode, CSignals &checkthis, string addmsg);
 bool isWin7();
 
 typedef  void (_cdecl  *PFUN_DEL) (HANDLE h);
@@ -184,16 +178,16 @@ void SetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname
 	reverse_copy(begin(propname), end(propname), begin(revstr));
 	EnumGraffyTypesfromProp(propname, types);
 	if (propname=="parent" || propname=="children" || propname=="type")
-		throw CAstException(pnode, string("Cannot modify ") +string("\"") + propname + string("\" property."));
+		throw CAstException(pnode, &ast, string("Cannot modify ") +string("\"") + propname + string("\" property."));
 	else if (propname=="pos")
 	{
-		if (in.GetType()!=CSIG_VECTOR)	throw CAstException(pnode, string("Invalid argument for ") + propname);
+		if (in.GetType()!=CSIG_VECTOR)	throw CAstException(pnode, &ast, string("Invalid argument for ") + propname);
 		switch(hobj->type)
 		{
 		case 'f':
 		{
 			HWND hDlg = hobj->m_dlg->hDlg;
-			if (in.nSamples!=4)	throw CAstException(pnode, string("Invalid number of argument for ") + propname);
+			if (in.nSamples!=4)	throw CAstException(pnode, &ast, string("Invalid number of argument for ") + propname);
 			int monitorH = getmonitorheight (hDlg);
 			int left = (int)in.buf[0];
 			int top = monitorH - (int)(in.buf[1]+in.buf[3]);
@@ -203,23 +197,23 @@ void SetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname
 			break;
 		}
 		case 'a':
-			if (in.nSamples!=4)	throw CAstException(pnode, string("Invalid number of argument for ") + propname);
+			if (in.nSamples!=4)	throw CAstException(pnode, &ast, string("Invalid number of argument for ") + propname);
 			hobj->setPos(in.buf[0], in.buf[1], in.buf[2], in.buf[3]);
 			break;
 		case 't':
-			if (in.nSamples!=2)	throw CAstException(pnode, string("Invalid number of argument for ") + propname);
+			if (in.nSamples!=2)	throw CAstException(pnode, &ast, string("Invalid number of argument for ") + propname);
 			hobj->setPos(in.buf[0], in.buf[1], 0, 0);
 			break;
 		}
 	}
 	else if (propname=="visible")
 	{
-		if (in.GetType()!=CSIG_SCALAR)	throw CAstException(pnode, string("\"") + propname + string("\" requires a scalar value."));
+		if (in.GetType()!=CSIG_SCALAR)	throw CAstException(pnode, &ast, string("\"") + propname + string("\" requires a scalar value."));
 		hobj->visible = !(in.value()==0);
 	}
 	else if (propname=="axiscolor")
 	{
-		if (hobj->type!='a') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for an axis object"));
+		if (hobj->type!='a') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for an axis object"));
 		BYTE r = (BYTE)(in.buf[0]*(double)0xff+.5);
 		BYTE g = (BYTE)(in.buf[1]*(double)0xff+.5);
 		BYTE b = (BYTE)(in.buf[2]*(double)0xff+.5);
@@ -234,30 +228,30 @@ void SetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname
 	}
 	else if (propname=="xlim")
 	{
-		if (hobj->type!='a') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for an axis object"));
+		if (hobj->type!='a') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for an axis object"));
 		int nItems = in.nSamples;
-		if (nItems!=2) throw CAstException(pnode, string("\"") + propname + string("\" requires a two-element vector."));
+		if (nItems!=2) throw CAstException(pnode, &ast, string("\"") + propname + string("\" requires a two-element vector."));
 		memcpy(((CAxis*)hobj)->xlim, in.buf, sizeof(((CAxis*)hobj)->xlim));
 	}
 	else if (propname=="ylim")
 	{
-		if (hobj->type!='a') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for an axis object"));
+		if (hobj->type!='a') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for an axis object"));
 		int nItems = in.nSamples;
-		if (nItems!=2) throw CAstException(pnode, string("\"") + propname + string("\" requires a two-element vector."));
+		if (nItems!=2) throw CAstException(pnode, &ast, string("\"") + propname + string("\" requires a two-element vector."));
 		memcpy(((CAxis*)hobj)->ylim, in.buf, sizeof(((CAxis*)hobj)->ylim));
 	}
 	else if (propname.substr(0,4)=="font" || propname=="string" || revstr.substr(0,strlen("alalignment"))=="tnemngilala")
 	{
-		if (hobj->type!='t') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a text object"));
+		if (hobj->type!='t') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a text object"));
 		bool donehere(false);
 		if (propname=="fontsize")
 		{
-			if (in.GetType()!=CSIG_SCALAR)	throw CAstException(pnode, string("\"") + propname + string("\" requires a scalar value."));
+			if (in.GetType()!=CSIG_SCALAR)	throw CAstException(pnode, &ast, string("\"") + propname + string("\" requires a scalar value."));
 			donehere=true, ((CText*)hobj)->fontsize = (int)in.value();
 		}
 		else if (propname.substr(0,4)=="font" || propname=="string" || revstr.substr(0,strlen("alalignment"))=="tnemngilala")
 		{
-			if (in.GetType()!=CSIG_STRING) throw CAstException(pnode, string("\"") + propname + string("\" requires a string input."));
+			if (in.GetType()!=CSIG_STRING) throw CAstException(pnode, &ast, string("\"") + propname + string("\" requires a string input."));
 			if (propname=="fontname")		donehere=true, strcpy(((CText*)hobj)->fontname, in.string().c_str());
 			else if (propname=="fontangle")		donehere=true, ((CText*)hobj)->italic = (in.string()=="italic") ? true : false;
 			else if (propname=="fontweight")	donehere=true, ((CText*)hobj)->bold = (in.string()=="bold") ? true : false;
@@ -271,17 +265,17 @@ void SetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname
 					if (in.string()=="left" || in.string()=="center" || in.string()=="right")
 						((CText*)hobj)->SetAlignment(in.string().c_str());
 					else
-						throw CAstException(pnode, string("\"") + in.string() + string("\": invalid property value for property \"") + propname + string("\"."));
+						throw CAstException(pnode, &ast, string("\"") + in.string() + string("\": invalid property value for property \"") + propname + string("\"."));
 				}
 				else if (propname=="verticalalignment")	
 				{
 					if (in.string()=="baseline" || in.string()=="bottom" || in.string()=="top")
 						((CText*)hobj)->SetAlignment(in.string().c_str());
 					else
-						throw CAstException(pnode, string("\"") + in.string() + string("\": invalid property value for property \"") + propname + string("\"."));
+						throw CAstException(pnode, &ast, string("\"") + in.string() + string("\": invalid property value for property \"") + propname + string("\"."));
 				}
 				else
-					throw CAstException(pnode, string("\"") + propname + string("\": invalid property name."));
+					throw CAstException(pnode, &ast, string("\"") + propname + string("\": invalid property name."));
 			}
 		}
 		if (donehere)
@@ -292,30 +286,30 @@ void SetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname
 			if (((CText*)hobj)->underline) style |= FONT_STYLE_UNDERLINE;
 			if (((CText*)hobj)->strikeout) style |= FONT_STYLE_STRIKEOUT;
 			if (((CText*)hobj)->ChangeFont(((CText*)hobj)->fontname, ((CText*)hobj)->fontsize, style)==NULL) 
-				throw CAstException(pnode, string("\"") + propname + string("\": Error in CreateFont."));
+				throw CAstException(pnode, &ast, string("\"") + propname + string("\": Error in CreateFont."));
 		}
 	}
 	else if (propname=="marker")
 	{
-		if (hobj->type!='l') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a line object"));
-		if (in.GetType()!=CSIG_STRING)	throw CAstException(pnode, string("\"") + propname + string("\" requires a character value"));
-		if ( in.string().length()!=1 || !strpbrk(MARKERSTR, in.string().c_str())) throw CAstException(pnode, string("\"") + propname + string("\" requires a character from the following:  ") + string(MARKERSTR));
+		if (hobj->type!='l') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a line object"));
+		if (in.GetType()!=CSIG_STRING)	throw CAstException(pnode, &ast, string("\"") + propname + string("\" requires a character value"));
+		if ( in.string().length()!=1 || !strpbrk(MARKERSTR, in.string().c_str())) throw CAstException(pnode, &ast, string("\"") + propname + string("\" requires a character from the following:  ") + string(MARKERSTR));
 		((CLine*)hobj)->symbol = in.string().c_str()[0];
 	}  
 	else if (propname=="markersize")
 	{
-		if (hobj->type!='l') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a line object"));
-		if (in.GetType()!=CSIG_SCALAR)	throw CAstException(pnode, string("\"") + propname + string("\" requires a scalar value."));
+		if (hobj->type!='l') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a line object"));
+		if (in.GetType()!=CSIG_SCALAR)	throw CAstException(pnode, &ast, string("\"") + propname + string("\" requires a scalar value."));
 		((CLine*)hobj)->markersize = (unsigned int)in.value();
 	}
 	else if (propname=="linewidth")
 	{
-		if (hobj->type!='l') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a line object"));
-		if (in.GetType()!=CSIG_SCALAR)	throw CAstException(pnode, string("\"") + propname + string("\" requires a scalar value."));
+		if (hobj->type!='l') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a line object"));
+		if (in.GetType()!=CSIG_SCALAR)	throw CAstException(pnode, &ast, string("\"") + propname + string("\" requires a scalar value."));
 		((CLine*)hobj)->lineWidth = (unsigned int)in.value();
 	}
 	else	
-		CAstException(pnode, string("\"") + propname + string("\": invalid property name."));
+		CAstException(pnode, &ast, string("\"") + propname + string("\": invalid property name."));
 }
 
 int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname, CSignals &out)
@@ -335,18 +329,18 @@ int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname,
 		{
 			int figID;
 			HWND hDlg = fp_GetHWND_PlotDlg(hobj->hPar);
-			if (hDlg==NULL) throw CAstException(pnode, string("(Unanticipated) fp_GetHWND_PlotDlg error...") + propname);
+			if (hDlg==NULL) throw CAstException(pnode, &ast, string("(Unanticipated) fp_GetHWND_PlotDlg error...") + propname);
 			GetWindowText(hDlg, buf, sizeof(buf));
 			if (!strncmp(buf, "Figure ", strlen("Figure ")))
 			{
 				if (sscanf(buf+strlen("Figure "), "%d", &figID)>0)	
 					out.buf[0] = (double)figID;
-				else throw CAstException(pnode, string("(Unanticipated) sscanf error after Figure...") + propname);
+				else throw CAstException(pnode, &ast, string("(Unanticipated) sscanf error after Figure...") + propname);
 			}
 			else
 			{
 				if (strlen(buf)>0)	out.SetString(buf);
-				else throw CAstException(pnode, string("(Unanticipated) Figure window with no caption...") + propname);
+				else throw CAstException(pnode, &ast, string("(Unanticipated) Figure window with no caption...") + propname);
 			}
 		}
 	}
@@ -404,7 +398,7 @@ int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname,
 	}
 	else if (propname=="axiscolor")
 	{
-		if (hobj->type!='a') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for an axis object"));
+		if (hobj->type!='a') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for an axis object"));
 		out.UpdateBuffer(3);
 		BYTE r = GetRValue(((CAxis*)hobj)->colorAxis);
 		BYTE g = GetGValue(((CAxis*)hobj)->colorAxis);
@@ -415,19 +409,19 @@ int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname,
 	}
 	else if (propname=="xlim")
 	{
-		if (hobj->type!='a') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for an axis object"));
+		if (hobj->type!='a') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for an axis object"));
 		out.UpdateBuffer(2);
 		memcpy(out.buf, ((CAxis*)hobj)->xlim, sizeof(((CAxis*)hobj)->xlim));
 	}
 	else if (propname=="ylim")
 	{
-		if (hobj->type!='a') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for an axis object"));
+		if (hobj->type!='a') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for an axis object"));
 		out.UpdateBuffer(2);
 		memcpy(out.buf, ((CAxis*)hobj)->ylim, sizeof(((CAxis*)hobj)->ylim));
 	}
 	else if (propname.substr(0,4)=="font" || propname=="string" || revstr.substr(0,strlen("alalignment"))=="tnemngilala")
 	{
-		if (hobj->type!='t') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a text object"));
+		if (hobj->type!='t') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a text object"));
 		if (propname=="fontsize")
 			out.SetValue(((CText*)hobj)->fontsize);
 		else if (propname=="fontname")
@@ -453,40 +447,40 @@ int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname,
 				else							strcpy(buf, vert.c_str());		
 			}
 			else
-				throw CAstException(pnode, string("\"") + propname + string("\": invalid property name."));
+				throw CAstException(pnode, &ast, string("\"") + propname + string("\": invalid property name."));
 			out.SetString(buf);
 		}
 	}
 	else if (propname=="xdata")
 	{// this will not work when xdata is not given specifically
-		if (hobj->type!='l') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a line object"));
+		if (hobj->type!='l') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a line object"));
 		out.UpdateBuffer(((CLine*)hobj)->orglength());
 		memcpy(out.buf, ((CLine*)hobj)->xdata, ((CLine*)hobj)->orglength());
 	}
 	else if (propname=="ydata")
 	{ // check this
-		if (hobj->type!='l') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a line object"));
+		if (hobj->type!='l') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a line object"));
 		out = ((CLine*)hobj)->sig;
 	}
 	else if (propname=="marker")
 	{
-		if (hobj->type!='l') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a line object"));
+		if (hobj->type!='l') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a line object"));
 		out.SetString(((CLine*)hobj)->symbol);
 	}
 	else if (propname=="markersize")
 	{
-		if (hobj->type!='l') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a line object"));
+		if (hobj->type!='l') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a line object"));
 		out.SetValue(((CLine*)hobj)->markersize);
 	}
 	else if (propname=="linestyle")
 	{
-		if (hobj->type!='l') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a line object"));
+		if (hobj->type!='l') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a line object"));
 		GetLineStyle(((CLine*)hobj)->lineStyle, revstr);
 		out.SetString(revstr.c_str());
 	}
 	else if (propname=="linewidth")
 	{
-		if (hobj->type!='l') throw CAstException(pnode, string("\"") + propname + string("\" is valid only for a line object"));
+		if (hobj->type!='l') throw CAstException(pnode, &ast, string("\"") + propname + string("\" is valid only for a line object"));
 		out.SetValue(((CLine*)hobj)->lineWidth);
 	}
 	else if (propname=="axis")
@@ -527,7 +521,7 @@ int GetPropVal(CAstSig &ast, const AstNode *pnode, CGobj *hobj, string propname,
 	}	
 	else
 	{
-		throw CAstException(pnode, string("\"") + propname + string("\" is not a valid property name."));
+		throw CAstException(pnode, &ast, string("\"") + propname + string("\" is not a valid property name."));
 	}
 	ast.Sig = out;
 	return 1;
@@ -566,25 +560,25 @@ void initLineList()
 	linecolorlist['w'] = RGB(255,255,255); // white 
 }
 
-void getLineSpecifier (const AstNode *pnode, string input, LineStyle &ls, int &mk, DWORD &col)
+void getLineSpecifier (CAstSig &ast, const AstNode *pnode, string input, LineStyle &ls, int &mk, DWORD &col)
 { // markcol is set only if marker is drawn but no line is drawn (
 	size_t id;
 	string input2(input);
 	ReplaceStr(input, "-.", "__");
 	if (input.length() > 4)
-		throw CAstException(pnode, "line format specifier cannot be longer than 4 characters.");
+		throw CAstException(pnode, &ast, "line format specifier cannot be longer than 4 characters.");
 	id = input.find_first_of(COLORSTR);
 	if (id!=string::npos) col = linecolorlist[input[id]], input.erase(id,1);
 	else					col = RGB(0,0,0); // default: black
 	while ((id=input.find_first_of(COLORSTR))!=string::npos) {
-		throw CAstException(pnode, "more than two characters for line color");
+		throw CAstException(pnode, &ast, "more than two characters for line color");
 		input.erase(id,1);
 	}
 	id = input.find_first_of(MARKERSTR);
 	if (id!=string::npos) mk = linemarkerlist[input[id]], input.erase(id,1);
 	else				mk = 0; // default: no marker
 	while ((id=input.find_first_of(MARKERSTR))!=string::npos) {
-		throw CAstException(pnode, "more than two characters for marker");
+		throw CAstException(pnode, &ast, "more than two characters for marker");
 		input.erase(id,1);
 	}
 	ReplaceStr(input, "__", "-.");
@@ -592,7 +586,7 @@ void getLineSpecifier (const AstNode *pnode, string input, LineStyle &ls, int &m
 	else if (input=="-" || input=="--" || input==":" || input=="-.")
 		ls = linestylelist[input];
 	else
-		throw CAstException(pnode, (input + string("Invalid line style specifier")).c_str());
+		throw CAstException(pnode, &ast, (input + string("Invalid line style specifier")).c_str());
 
 	if (input2.find_first_of(MARKERSTR)==string::npos) //marker is specified but
 		if (input=="-" || input=="--" || input==":" || input=="-.") // linestyle is not
@@ -651,19 +645,19 @@ int LoadGRAFFY()
 CGobj *aux_getset(CAstSig &ast, const AstNode *pnode, const AstNode *p0, const AstNode *pnext, string &propname)
 {
 	CGobj *hobj;
-	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, "Failed to load graffy.dll for plot");
+	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, &ast, "Failed to load graffy.dll for plot");
 	CSignals first, second;
 	first = ast.Compute(p0);
 	if ( first.GetType()!=CSIG_SCALAR && first.GetType()!=CSIG_STRING)
-		throw CAstException(pnode, "1st argument must be the index (scalar) or an array of index (vector) or string of the variable of the figure window");
+		throw CAstException(pnode, &ast, "1st argument must be the index (scalar) or an array of index (vector) or string of the variable of the figure window");
 	if (!(hobj = (CGobj *)GCF(&first))) 	//if first does not indicate a figure window ID.
 		if (!(hobj = (CGobj *)GetGraffyHandle((int)first.value()))) 
-			throw CAstException(pnode, "1st argument is not a valid graphic object identifier.");
+			throw CAstException(pnode, &ast, "1st argument is not a valid graphic object identifier.");
 	if (pnext) //do this only needed (e.g., close() does not need this)
 	{
 		second=ast.Compute(pnext);
 		if ( propname.length()==0 && second.GetType()!=CSIG_STRING )
-			throw CAstException(pnode, "2nd argument must be string of the property.");
+			throw CAstException(pnode, &ast, "2nd argument must be string of the property.");
 		propname = second.string();
 	}
 	return hobj;
@@ -675,7 +669,7 @@ void aux_set(CAstSig &ast, const AstNode *pnode, const AstNode *p0)
 	int nArgs(0);
 	for (const AstNode *cp(p0); cp; cp=cp->next)	++nArgs;
 	if ((nArgs/2)*2 == nArgs) // if nArgs is even, error.
-		throw CAstException(pnode, "set(graphic_identifier, propertyname1, propertyval1, propertyname2, propertyval2,...)");
+		throw CAstException(pnode, &ast, "set(graphic_identifier, propertyname1, propertyval1, propertyname2, propertyval2,...)");
 	CSignals third, out;
 	string propname;
 	CGobj *hobj;
@@ -711,16 +705,16 @@ void aux_get(CAstSig &ast, const AstNode *pnode, const AstNode *p0)
 		GetPropVal(ast, pnode, hobj, propname, out);
 	}
 	else
-		throw CAstException(pnode, "1st argument: graffic object, 2nd argument: propery_name");
+		throw CAstException(pnode, &ast, "1st argument: graffic object, 2nd argument: propery_name");
 }
 
 void aux_delete_single(CAstSig &ast, const AstNode *pnode, const AstNode *p, CSignal &tp)
 {
 	if ( tp.GetType()!=CSIG_SCALAR && tp.GetType()!=CSIG_STRING)
-		throw CAstException(pnode, "1st argument must be the index (scalar) or an array of index (vector) or string of the variable of the figure window");
+		throw CAstException(pnode, &ast, "1st argument must be the index (scalar) or an array of index (vector) or string of the variable of the figure window");
 	CGobj *hobj;
 	if (!(hobj = (CGobj *)GetGraffyHandle((int)tp.value()))) 
-		throw CAstException(pnode, "1st argument is not a valid graphic object identifier.");
+		throw CAstException(pnode, &ast, "1st argument is not a valid graphic object identifier.");
 	fp_deleteObj(hobj);
 	InvalidateRect(fp_GetHWND_PlotDlg(hobj), NULL, TRUE);
 }
@@ -731,21 +725,21 @@ void aux_delete(CAstSig &ast, const AstNode *pnode, const AstNode *p, CSignal *c
 	CSignals tp;
 	if (carry==NULL)
 	{
-		if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, "Failed to load graffy.dll for plot");
+		if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, &ast, "Failed to load graffy.dll for plot");
 		const char *fnsigs[] = {"(graffy object(s) to delete)", 0};
-		checkNumArgs(pnode, p, fnsigs, 1, 1);
+		ast.checkNumArgs(pnode, p, fnsigs, 1, 1);
 		tp=ast.Compute(p);
 	}
 	else
 		tp = *carry;
 	if (tp.GetType()==CSIG_AUDIO || tp.GetType()==CSIG_EMPTY)
-		throw CAstException(pnode, "Argument must be a scalar or an array or cell array of the graffy object to delete.");
+		throw CAstException(pnode, &ast, "Argument must be a scalar or an array or cell array of the graffy object to delete.");
 	if (tp.GetType()==CSIG_CELL)
 	{
 		for (size_t k=0; k<tp.cell.size(); k++)
 		{
 			if (tp.cell[k].GetType()==CSIG_AUDIO || tp.cell[k].GetType()==CSIG_EMPTY)
-				throw CAstException(pnode, "Argument must be a scalar or an array or cell array of the graffy object to delete.");
+				throw CAstException(pnode, &ast, "Argument must be a scalar or an array or cell array of the graffy object to delete.");
 		}
 		vector<HANDLE> hobj2del;
 		CSignals tpp;
@@ -771,7 +765,7 @@ void aux_delete(CAstSig &ast, const AstNode *pnode, const AstNode *p, CSignal *c
 		CGobj *hobj0(hobj);
 		hobj = (CGobj *)GCF(&tpp);
 		if (k>0 && !hobj0 && hobj)
-			throw CAstException(pnode, "Aarray argument must be all figure or all non-figure.");
+			throw CAstException(pnode, &ast, "Aarray argument must be all figure or all non-figure.");
 	}
 	if (hobj) // figures to delete
 	{
@@ -801,31 +795,31 @@ void aux_delete(CAstSig &ast, const AstNode *pnode, const AstNode *p, CSignal *c
 
 void aux_close(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
-	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, "Failed to load graffy.dll for plot");
+	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, &ast, "Failed to load graffy.dll for plot");
 	const char *fnsigs[] = {"(figure ID(s) to delete)", 0};
-	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	ast.checkNumArgs(pnode, p, fnsigs, 1, 1);
 	CSignals tp=ast.Compute(p);
 	const AstNode *p0(p->next);
 	CGobj *hobj = aux_getset (ast, pnode, p, p0, string("dummy"));
 	if (hobj->type=='f')
 		aux_delete(ast, pnode, p, NULL);
 	else
-		throw CAstException(pnode, "Argument must be the index (scalar) or an array of index (vector) or string of the variable to delete figure window");
+		throw CAstException(pnode, &ast, "Argument must be the index (scalar) or an array of index (vector) or string of the variable to delete figure window");
 }
 
 void aux_text(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 { // text (x, y, "string")
-	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, "Failed to load graffy.dll for plot");
+	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, &ast, "Failed to load graffy.dll for plot");
 	const char *fnsigs[] = {"(x,  y, string)", 0};
-	checkNumArgs(pnode, p, fnsigs, 3, 3);
+	ast.checkNumArgs(pnode, p, fnsigs, 3, 3);
 	CSignals *gcf = ast.RetrieveVar("gcf");
-	if (gcf==NULL) 	throw CAstException(pnode, "gcf not ready (There is no plot window to draw text)");
+	if (gcf==NULL) 	throw CAstException(pnode, &ast, "gcf not ready (There is no plot window to draw text)");
 	CSignals first, second, third;
 	first = ast.Compute(p);
 	second = ast.Compute(p->next);
 	third = ast.Compute(p->next->next);
-	if (first.GetType()!=CSIG_SCALAR || second.GetType()!=CSIG_SCALAR) throw CAstException(pnode, "First two arguments must be scalar.");
-	if (third.GetType()!=CSIG_STRING) throw CAstException(pnode, "Third argument must be string.");
+	if (first.GetType()!=CSIG_SCALAR || second.GetType()!=CSIG_SCALAR) throw CAstException(pnode, &ast, "First two arguments must be scalar.");
+	if (third.GetType()!=CSIG_STRING) throw CAstException(pnode, &ast, "Third argument must be string.");
 	HANDLE h = GCF(gcf);
 	HANDLE hText = AddText(h, third.string().c_str(), first.value(), second.value(), 0, 0);
 	ast.Sig.SetValue((double)(int)hText);
@@ -837,7 +831,7 @@ CAstSig *mainast;
 void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
 	mainast = &ast;
-	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, "Failed to load graffy.dll for plot");
+	if (!graffyLoaded)	if (!LoadGRAFFY()) throw CAstException(pnode, &ast, "Failed to load graffy.dll for plot");
 	
 //	if (mutex==NULL) mutex = CreateMutex(0, 0, 0);
 //	dw = WaitForSingleObject(mutex, INFINITE);
@@ -847,16 +841,16 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 //	memset(color, 0, sizeof(double)*3);
 	const char *fnsigs[] = {
 		"(vector_x, vector_y)", 0};
-	checkNumArgs(pnode, p, fnsigs, 1, 3);
+	ast.checkNumArgs(pnode, p, fnsigs, 1, 3);
 
 	int nArgs(0);
 	for (const AstNode *cp=p; cp; cp=cp->next)		++nArgs;
 	if (nArgs==1) {
 		CSignals tp = ast.Compute(p);
-		blockCell(pnode,  tp);
-		blockString(pnode,  tp);
-		blockScalar(pnode,  tp);
-		blockComplex(pnode,  tp);
+		ast.blockCell(pnode,  tp);
+		ast.blockString(pnode,  tp);
+		ast.blockScalar(pnode,  tp);
+		ast.blockComplex(pnode,  tp);
 	}
 
 	static	CSignals dumma;
@@ -870,7 +864,7 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	{
 	case 3:
 		args[2] = ast.Compute(p->next->next);
-		checkString(pnode, args[2], "Third argument--");
+		ast.checkString(pnode, args[2], "Third argument--");
 	case 2:
 		args[1] = ast.Compute(p->next);
 	case 1:
@@ -883,25 +877,25 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	switch(nArgs)
 	{
 	case 3:
-		if (args[2].nSamples>4) throw CAstException(pnode, p->next, fnsigs, "String argument must be 4 characters or less.");
+		if (args[2].nSamples>4) throw CAstException(pnode, &ast, fnsigs, "String argument must be 4 characters or less.");
 	case 2:// both signals must be non-audio
 		if ( (args[0].GetType()==CSIG_VECTOR && args[1].GetType()==CSIG_VECTOR) ) 
 		{
 			if (args[0].nSamples != args[1].nSamples)
-				throw CAstException(pnode, p->next, fnsigs, "The length of 1st and 2nd arguments must be the same.");
+				throw CAstException(pnode, &ast, fnsigs, "The length of 1st and 2nd arguments must be the same.");
 		}
 		else
 		{
 			if (args[0].GetType()!=CSIG_AUDIO && args[0].GetType()!=CSIG_VECTOR) 
-				throw CAstException(pnode, p->next, fnsigs, "1st argument must be audio or non-audio.");
+				throw CAstException(pnode, &ast, fnsigs, "1st argument must be audio or non-audio.");
 			if (args[1].GetType()!=CSIG_STRING)
-				throw CAstException(pnode, p->next, fnsigs, "When two arguments are specified and 2nd arg is not vector or audio, 2nd arg must be plot style string.");
+				throw CAstException(pnode, &ast, fnsigs, "When two arguments are specified and 2nd arg is not vector or audio, 2nd arg must be plot style string.");
 		}
 //		args[nArgs-1].getString(buf, 64); // debuggin purposes only
 		break;
 	}
 	if (nArgs<3 && args[nArgs-1].GetType()!=CSIG_STRING) args.push_back(dumma), args.back().SetString("-b");
-	getLineSpecifier (pnode, args.back().string(), linestyle, marker, col); // check if the line format string is valid
+	getLineSpecifier (ast, pnode, args.back().string(), linestyle, marker, col); // check if the line format string is valid
 //	CSignals threadID((double)GetCurrentThreadId());
 //	args.push_back(threadID);
 
@@ -943,8 +937,10 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	ast.SetVar("gcf", gcf);
 
 	HWND h  = GetHWND_SIGPROC();
-	PostMessage(h, WM__PLOTDLG_CREATED, (WPARAM)"", (LPARAM)&in);
+	static char buf[64];
 	CFigure *cfig = static_cast<CFigure *>(fig);
+	cfig->m_dlg->GetWindowText(buf, sizeof(buf));
+	PostMessage(h, WM__PLOTDLG_CREATED, (WPARAM)buf, (LPARAM)&in);
 
 	ast.Sig.SetValue((double)(int)plotline);
 
@@ -956,18 +952,18 @@ void aux_pause(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 {
 	DWORD res;
 	const char *fnsigs[] = {"(time_to_pause_in_ms)", 0};
-	checkNumArgs(pnode, p, fnsigs, 1, 1);
+	ast.checkNumArgs(pnode, p, fnsigs, 1, 1);
 	CSignals sig = ast.Compute(p);
 	if (!sig.IsScalar()) 
-		throw CAstException(pnode, p->next, fnsigs, "Argument must be a scalar.");
+		throw CAstException(pnode, &ast, fnsigs, "Argument must be a scalar.");
 	if (sig.value()<0.)
-		throw CAstException(pnode, p->next, fnsigs, "Argument must be a positive value.");
+		throw CAstException(pnode, &ast, fnsigs, "Argument must be a positive value.");
 	else if (sig.value()>0.)
 		Sleep((DWORD)sig.value());
 	else // zero 
 	{
 		CSignals *gcf = ast.RetrieveVar("gcf");
-		if (gcf==NULL) 	throw CAstException(pnode, "(pause) gcf not ready (There is no plot window to draw text)");
+		if (gcf==NULL) 	throw CAstException(pnode, &ast, "(pause) gcf not ready (There is no plot window to draw text)");
 		HANDLE h = GCF(gcf);
 		HANDLE hText = AddText(h, "Press any key", .8, .95, 0, 0);
 		CFigure *fig = static_cast<CFigure *>(h);

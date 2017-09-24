@@ -18,7 +18,7 @@
 //#include "common.h"
 
 #include <complex>
-#include <cmath>
+//#include <cmath>
 
 #include <math.h> // ceil
 
@@ -306,16 +306,36 @@ void body::SwapContents1node(body &sec)
 body &body::addmult(char type, body &arg)
 { // arg must be a vector
 	if (nSamples<arg.nSamples) SwapContents1node(arg);
+	if (arg.IsComplex()) SetComplex();
 	switch(type)
 	{
 	case '+':
-		for (int k=0; k<min(nSamples, arg.nSamples); k++) 
-			buf[k] += arg.buf[k];
+		if (IsComplex()) 
+		{
+			for (int k=0; k<min(nSamples, arg.nSamples); k++) 
+				cbuf[k] += arg.cbuf[k];
+		}
+		else
+			for (int k=0; k<min(nSamples, arg.nSamples); k++) 
+				buf[k] += arg.buf[k];
 		break;
 	case '*':
-		for (int k=0; k<min(nSamples, arg.nSamples); k++) 
-			buf[k] *= arg.buf[k];
+		if (IsComplex()) 
+		{
+			for (int k=0; k<min(nSamples, arg.nSamples); k++) 
+				cbuf[k] *= arg.cbuf[k];
+		}
+		else
+			for (int k=0; k<min(nSamples, arg.nSamples); k++) 
+				buf[k] *= arg.buf[k];
 		break;
+	}
+	if (IsComplex()) 
+	{
+		for (int k=0; k<max(nSamples, arg.nSamples); k++) 
+			if (imag(cbuf[k])!=0.) return *this;
+		//if it survives this far, it should be set real
+		SetReal();
 	}
 	return *this;
 }
@@ -323,7 +343,7 @@ body &body::addmult(char type, body &arg)
 body &body::each(double (*fn)(double))
 {
 	if (bufBlockSize==1)
-		for (int i=0; i<nSamples; ++i)	logbuf[i] = (bool)fn(logbuf[i]);
+		for (int i=0; i<nSamples; ++i)	logbuf[i] = fn(logbuf[i])!=0;
 	else
 		for (int i=0; i<nSamples; ++i)	buf[i] = fn(buf[i]);
 	return *this;
@@ -353,9 +373,9 @@ body &body::each(double (*fn)(double, double), body &arg)
 	{
 		double val = arg.value();
 		if (bufBlockSize==1 && arg.bufBlockSize==1)
-			for (int k=0; k<nSamples; k++)	logbuf[k] = (bool)fn(logbuf[k],arg.logbuf[0]); 
+			for (int k=0; k<nSamples; k++)	logbuf[k] = fn(logbuf[k],arg.logbuf[0])!=0;
 		else if (bufBlockSize==1 && arg.bufBlockSize!=1)
-			for (int k=0; k<nSamples; k++)	logbuf[k] = (bool)fn(logbuf[k],val); 
+			for (int k=0; k<nSamples; k++)	logbuf[k] = fn(logbuf[k],val)!=0; 
 		else
 			for (int k=0; k<nSamples; k++)	buf[k] = fn(buf[k],val); 
 	}
@@ -364,9 +384,9 @@ body &body::each(double (*fn)(double, double), body &arg)
 		double baseval = buf[0];
 		UpdateBuffer(arg.nSamples);
 		if (bufBlockSize==1 && arg.bufBlockSize==1)
-			for (int k=0; k<arg.nSamples; k++) logbuf[k] = (bool)fn(baseval, arg.logbuf[k]); 
+			for (int k=0; k<arg.nSamples; k++) logbuf[k] = fn(baseval, arg.logbuf[k])!=0;
 		else if (bufBlockSize==1 && arg.bufBlockSize!=1)
-			for (int k=0; k<arg.nSamples; k++) logbuf[k] = (bool)fn(baseval, arg.buf[k]); 
+			for (int k=0; k<arg.nSamples; k++) logbuf[k] = fn(baseval, arg.buf[k])!=0; 
 		else
 			for (int k=0; k<arg.nSamples; k++) buf[k] = fn(baseval, arg.buf[k]); 
 	}
@@ -374,9 +394,9 @@ body &body::each(double (*fn)(double, double), body &arg)
 	{
 		nSamples = min(nSamples, arg.nSamples);
 		if (bufBlockSize==1 && arg.bufBlockSize==1)
-			for (int k=0; k<nSamples; k++) logbuf[k] = (bool)fn(logbuf[k], arg.logbuf[k]); 
+			for (int k=0; k<nSamples; k++) logbuf[k] = fn(logbuf[k], arg.logbuf[k])!=0; 
 		else if (bufBlockSize==1 && arg.bufBlockSize!=1)
-			for (int k=0; k<nSamples; k++) logbuf[k] = (bool)fn(logbuf[k], arg.buf[k]); 
+			for (int k=0; k<nSamples; k++) logbuf[k] = fn(logbuf[k], arg.buf[k])!=0; 
 		else
 			for (int k=0; k<nSamples; k++) buf[k] = fn(buf[k], arg.buf[k]); 
 	}
@@ -559,8 +579,32 @@ body &body::replace(body &sec, int id1, int id2)
 double body::Sum()
 {
 	double sum(0.);
-	for (int i=0; i<nSamples; i++)		sum += buf[i];
+	int isum(0);
+	if (bufBlockSize==1)
+	{
+		for (int i=0; i<nSamples; i++)		isum += logbuf[i];
+		sum = (double)isum;
+	}
+	else
+		for (int i=0; i<nSamples; i++)		sum += buf[i];
 	return sum;
+}
+
+double body::Stdev(int flag)
+{
+	double sqsum(0.);
+	for (int k=0; k<nSamples; k++)		sqsum += buf[k]*buf[k];
+	if (flag==1)
+	{
+		double var = sqsum/nSamples - Mean()*Mean();
+		return sqrt(var);
+	}
+	else
+	{
+		double m = Mean();
+		double var = (sqsum + m*m*nSamples - 2*m*Sum() ) / (nSamples-1);
+		return sqrt(var);
+	}
 }
 
 body &body::Min(double crit)
@@ -802,6 +846,11 @@ EXP_CS CSignal& CSignal::operator+=(CSignal &sec)
 			sec.SetComplex();
 			for (int k=0; k<nSamples; k++)
 				cbuf[k] += sec.cbuf[0];
+			// if imaginary part is zero, make it real
+			for (int k=0; k<nSamples; k++) 
+				if (imag(cbuf[k])!=0.) return *this;
+			//if it survives this far, it should be set real
+			SetReal();
 		}
 		else
 		{
@@ -832,6 +881,11 @@ EXP_CS CSignal& CSignal::operator*=(CSignal &sec)
 			sec.SetComplex();
 			for (int k=0; k<nSamples; k++)
 				cbuf[k] *= sec.cbuf[0];
+			// if imaginary part is zero, make it real
+			for (int k=0; k<nSamples; k++) 
+				if (imag(cbuf[k])!=0.) return *this;
+			//if it survives this far, it should be set real
+			SetReal();
 		}
 		else
 		{
@@ -877,11 +931,19 @@ const CSignal& CSignal::operator+=(CSignal *yy)
 		{
 			int nSamples0 = ptail->nSamples;
 			if (yy->IsComplex()) ptail->SetComplex();
+			if (IsComplex()) yy->SetComplex();
 			ptail->UpdateBuffer(yy->nSamples + nSamples0);
 			if (GetType()==CSIG_STRING)
 				strcat(ptail->strbuf, yy->strbuf);
 			else
 				memcpy(&ptail->logbuf[nSamples0*bufBlockSize], yy->buf, bufBlockSize*yy->nSamples);
+		}
+		if (GetType()!=CSIG_AUDIO && IsComplex())
+		{
+			for (int k=0; k<nSamples; k++) 
+				if (imag(cbuf[k])!=0.) return *this;
+			//if it survives this far, it should be set real
+			SetReal();
 		}
 	}
 	return *this;
@@ -2006,8 +2068,6 @@ int CSignal::GetType() const
 	}
 	else if (fs==2) // string
 		return CSIG_STRING;
-	else if (IsComplex()) // 
-		return CSIG_COMPLEX;
 	else if (nSamples==1 && fs==1) // scalar 
 		return CSIG_SCALAR;
 	else if (fs>10) // audio
@@ -2422,7 +2482,7 @@ CSignal &CSignal::each(double (*fn)(double))
 
 CSignal &CSignal::each(complex<double> (*fn)(complex<double>))
 {
-	if (GetType()==CSIG_COMPLEX)
+	if (IsComplex())
 		body::each(fn); 
 	else
 		throw "each()--expecting complex number"; 
@@ -2431,7 +2491,7 @@ CSignal &CSignal::each(complex<double> (*fn)(complex<double>))
 
 CSignal &CSignal::each(double (*fn)(complex<double>))
 {
-	if (GetType()==CSIG_COMPLEX)
+	if (IsComplex())
 		body::each(fn); 
 	else
 		throw "each()--expecting complex number"; 
@@ -2472,7 +2532,7 @@ CSignal &CSignal::each(double (*fn)(double, double), body &arg2)
 
 CSignal &CSignal::each(complex<double> (*fn)(complex<double>, complex<double>), body &arg2)
 {
-	if (GetType()==CSIG_COMPLEX)
+	if (IsComplex())
 		body::each(fn, arg2);  
 	else
 		throw "each()--expecting complex number"; 
@@ -3144,7 +3204,6 @@ EXP_CS double * CSignals::FFT(int len)
 	fftw_free(in); 
 	fftw_free(out);
 	fftw_free(out2);
-	*this /= (double)len;
 	return buf;
 }
 
@@ -3176,9 +3235,7 @@ EXP_CS double * CSignals::iFFT(void)
 		{
 			memcpy(&in[len/2], &cbuf[len/2], sizeof(*cbuf));
 		}
-
 		p = fftw_plan_dft_c2r_1d(len, in, out, FFTW_ESTIMATE);
-
 		fftw_execute(p);
 		memcpy(buf, out, sizeof(double)*len);
 		bufBlockSize = sizeof(double); 

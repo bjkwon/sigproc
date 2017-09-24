@@ -27,16 +27,14 @@ extern "C" {
 #define NODE_CIPULSE6	10106
 
 typedef struct AstNode_t {
-  int type, line, column;
+  int line, type;
+  unsigned col;
   double dval;
   char *str;
+  int suppress;
   struct AstNode_t *child;
   struct AstNode_t *alt;
-#ifndef CISIGPROC  
   struct AstNode_t *tail;
-#else  
-  struct AstNode_t *LastChild;
-#endif
   struct AstNode_t *next;
 } AstNode;
 

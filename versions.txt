@@ -10,3 +10,19 @@
 
 9/24/2016
 * operator $ added: spectrum shifter by Hz.
+
+9/10/2017
+-- Operations between complex numbers will turn to a real number if imaginary part is all zero. '+' '*' and concatenation of array are done. 
+-- function conj() added
+-- fft() and ifft() are finalized. Now x is (almost) the same as ifft(fft(x))
+
+* So far, x(11/2) or x(5.5) becomes and x(6), but 
+   x(1:11/5) makes only x([1 2 3 4 5]), because aux_colon doesn't do round up the index
+This must be consistent, so from now on x(5.5) x(5.8) or x(5.999) will not round up.
+***IMPORTANT********
+x(20:15.5) makes only x([20 19 18 17 16])
+Be careful... increasing and decreasing indices end differently at the end
+
+9/11/2017 (critical bug id'ed and fixed)
+while A B end 
+did not work if A was an expression --> fixed by using conditional in psycon.y like T_IF

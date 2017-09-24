@@ -25,7 +25,7 @@
 #define CSIG_SCALAR		4
 #define CSIG_CELL		8
 #define CSIG_VECTOR		17
-#define CSIG_COMPLEX	19
+#define CSIG_COMPLEX	19 // let's not use GetType for this.... use IsComplex
 #define CSIG_AUDIO		65
 
 // Used for communication bet sigproc and xcom (i.e., AstSig.cpp and showvar.cpp)
@@ -48,6 +48,7 @@ enum DEBUG_STATUS
     exiting,
     cleanup,
 	aborting,
+	file_changed,
 };
 
 //End of Used for communication bet sigproc and xcom (i.e., AstSig.cpp and showvar.cpp)
@@ -64,6 +65,7 @@ enum DEBUG_STATUS
 #include <iostream>
 #include <list>
 #include <map>
+#include <unordered_map>
 #include <vector>
 #include <set>
 #include <complex>
@@ -134,6 +136,7 @@ public:
 	EXP_CS double Max(int  &id, int len=-1);
 	EXP_CS double Max() {int id; return Max(id);}
 	EXP_CS double Mean() {return Sum()/(double)nSamples;}
+	EXP_CS double Stdev(int flag=0);
 	EXP_CS body &Min(double crit);
 	EXP_CS body &Max(double crit);
 };
@@ -395,29 +398,30 @@ private:
 	short * makebuffer(int  &nChan);
 };
 
+class CAstSig;
+
 class CAstException {
 public:
 	const AstNode *pnode;
+	CAstSig *pAst;
 	string str1, str2, outstr;
 	int int1;
 
-	EXP_CS CAstException(const AstNode *p, const string s1, const string s2="");
-	EXP_CS CAstException(const AstNode *p, const string s1, const int x, const string s2="");
-	EXP_CS CAstException(const AstNode *p0, const AstNode *p, const char** FuncSigs, const string msg);
-	EXP_CS CAstException(const AstNode *p0, const char* msg);
+	EXP_CS CAstException(const AstNode *p, CAstSig *pAst, const string s1, const string s2="");
+	EXP_CS CAstException(const AstNode *p, CAstSig *pAst, const string s1, const int x, const string s2="");
+	EXP_CS CAstException(const AstNode *p0, CAstSig *pAst, const char** FuncSigs, const string msg);
+	EXP_CS CAstException(const AstNode *p0, CAstSig *past, const char* msg);
 	string getErrMsg() const {return outstr;};
 private:
-	EXP_CS void makeOutStr() {makeOutStr(pnode);}
-	EXP_CS void makeOutStr(const AstNode *p);
+	EXP_CS void makeOutStr();
 };
-
-class CAstSig;
 
 class CAstSigEnv
 {
 	friend class CAstSig;
 public:
 	map<string,AstNode *> UDFs;
+	map<string,string> UDF_body;
 	map<string, vector<int>> DebugBreaks;
 	int Fs;
 	int curLine; // used for control F10
@@ -446,6 +450,7 @@ public:
 	char *lhsvar;
 	CAstSig *son;
 	CAstSig *dad;
+	AstNode *pLast;
 	DEBUG_STATUS dstatus;
 private:
 	static const int DefaultFs = 22050;
@@ -454,14 +459,15 @@ private:
 	double endpoint;
 	bool debugon;
 	bool fAllocatedAst, fExit, fBreak, fContinue;
-	AstNode *pLast;
 protected:
 	int typeLast;
 
 private:
 #ifdef _WINDOWS
+#ifndef CISIGPROC  
 	void debug_appl_manager(const CAstSig *debugAstSig, int debug_status, int line=-1);
 	int debugcatch(const AstNode *pBlock=NULL);
+#endif
 	int breakpoint(const AstNode *pnode);
 #endif
 
@@ -472,14 +478,24 @@ private:
 	CAstSig &insertreplace(const AstNode *pnode, CSignal *inout, CSignals &sec, CSignals &indsig);
 	void checkindexrange(const AstNode *pnode, CSignal *inout, int id, string errstr);
 	bool isContiguous(body &id, int &begin, int &end);
-	bool searchtree(AstNode *pp, int type);
+	AstNode *searchtree(AstNode *pp, int type);
 	CSignals &extract(CSignal &Sig, body &isig);
 	bool checkcond(const AstNode *p);
 	AstNode *get_tree_on_line(const AstNode *pnode, int line);
 	bool IsThisBreakpoint(const AstNode *pnode);
 
 public:
-	bool CheckPreparCallUDF(const AstNode *pnode);
+	void checkAudioSig(const AstNode *pnode, CSignals &checkthis, string addmsg="");
+	void checkComplex (const AstNode *pnode, CSignals &checkthis);
+	void checkVector(const AstNode *pnode, CSignals &checkthis, string addmsg="");
+	void checkString(const AstNode *pnode, CSignals &checkthis, string addmsg="");
+	void blockCell(const AstNode *pnode, CSignals &checkthis);
+	void blockScalar(const AstNode *pnode, CSignals &checkthis);
+	void blockString(const AstNode *pnode, CSignals &checkthis);
+	void blockComplex(const AstNode *pnode, CSignals &checkthis);
+	void cleanup_sons();
+	const char* baseudfname();
+	bool CheckPrepareCallUDF(int type, const AstNode *pnode);
 	void CallUDF(int debug_status=0);
 	void (*CallbackCIPulse)(const AstNode *, CAstSig *);
 	int (*CallbackHook)(CAstSig &ast, const AstNode *pnode, const AstNode *p);
@@ -487,22 +503,22 @@ public:
 	EXP_CS CSignal *RetrieveCell(const char *cellvar, int id);
 
     EXP_CS CAstSig(const CAstSig &org);
-	EXP_CS CAstSig(const CAstSig *env);
-	EXP_CS CAstSig(const char *str, const CAstSig *env);
-	EXP_CS CAstSig(AstNode *pNode, const CAstSig *env);
+	EXP_CS CAstSig(const CAstSig *src);
+	EXP_CS CAstSig(const char *str, const CAstSig *src);
+	EXP_CS CAstSig(AstNode *pNode, const CAstSig *src);
 	EXP_CS CAstSig(CAstSigEnv *env);
 	EXP_CS CAstSig(const char *str, CAstSigEnv *env);
 	EXP_CS CAstSig(AstNode *pNode, CAstSigEnv *env);
 	EXP_CS ~CAstSig();
 
 	EXP_CS CAstSig &SetNewScript(const char *str, AstNode *pAstOut = NULL);
-	EXP_CS CAstSig &SetNewFile(FILE *source);
+	EXP_CS AstNode* SetNewScriptFromFile(const char *str, FILE *source);
 	EXP_CS CSignals &Compute(void);
 	EXP_CS CSignals &Compute(const AstNode *pnode);
 	EXP_CS CSignals &Eval(AstNode *pnode);
 	EXP_CS CAstSig &Reset(const int fs = 0, const char* path=NULL);
 	EXP_CS CAstSig &SetVar(const char *name, const CSignals &sig);
-	EXP_CS CSignals &GetVar(const char *name);
+	EXP_CS CSignals *GetVar(const char *name);
 	EXP_CS CAstSig &AddCell(const char *name, const CSignals &sig);
 	EXP_CS CAstSig &SetCell(const char *name, const unsigned int i, const CSignal &sig);
 	EXP_CS const char *GetPath() {return pEnv->AuxPath.c_str();}
@@ -522,6 +538,7 @@ public:
 	EXP_CS string MakeFilename(string fname, const string ext);
 	EXP_CS FILE *OpenFileInPath(string fname, const string ext, string &fullfilename);
 	EXP_CS AstNode *ReadUDF(const char *udf_filename, const AstNode *pnode);
+	void checkNumArgs(const AstNode *pnode, const AstNode *p, const char** FuncSigs, const int minArgs, const int maxArgs);
 };
 
 

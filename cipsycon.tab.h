@@ -1,4 +1,3 @@
-
 /* A Bison parser, made by GNU Bison 2.4.1.  */
 
 /* Skeleton interface for Bison's Yacc-like parsers in C
@@ -66,14 +65,18 @@
      T_COMP_GE = 281,
      T_LOGIC_AND = 282,
      T_LOGIC_OR = 283,
-     T_NUMBER = 284,
-     T_STRING = 285,
-     T_ID = 286,
-     T_NEGATIVE = 287,
-     T_POSITIVE = 288,
-     T_LOGIC_NOT = 289,
-     T_USEC = 290,
-     T_MSEC = 291
+     T_REPLICA = 284,
+     T_NUMBER = 285,
+     T_STRING = 286,
+     T_ID = 287,
+     T_HOOKCMD = 288,
+     T_ENDPOINT = 289,
+     T_NEGATIVE = 290,
+     T_POSITIVE = 291,
+     T_LOGIC_NOT = 292,
+     T_USEC = 293,
+     T_MSEC = 294
+
    };
 #endif
 
@@ -84,7 +87,7 @@ typedef union YYSTYPE
 {
 
 /* Line 1676 of yacc.c  */
-#line 23 "cipsycon.y"
+#line 22 "psycon.y"
 
 	double dval;
 	char *str;
@@ -93,7 +96,7 @@ typedef union YYSTYPE
 
 
 /* Line 1676 of yacc.c  */
-#line 97 "cipsycon.tab.h"
+#line 98 "psycon.tab.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
@@ -116,4 +119,5 @@ typedef struct YYLTYPE
 #endif
 
 extern YYLTYPE yylloc;
+
 

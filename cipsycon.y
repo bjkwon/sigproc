@@ -18,7 +18,6 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 %token-table
 %error-verbose
 %debug
-%expect 100
 
 %union {
 	double dval;
@@ -27,7 +26,7 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 }
 %token T_UNKNOWN
 %token T_NEWLINE	"end of line"
-%token T_IF			"if"
+%token T_IF		"if"
 %token T_ELSE		"else"
 %token T_ELSEIF		"elseif"
 %token T_END		"end"
@@ -52,10 +51,13 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 %token T_COMP_GE	">="
 %token T_LOGIC_AND	"&&"
 %token T_LOGIC_OR	"||"
+%token T_REPLICA	".."
 
 %token <dval> T_NUMBER "number"
-%token <str> T_STRING "string"	T_ID "identifier"
-%type <pnode> block block_func line line_func stmt funcdef elseif_list condition case_list id_list arg arg_list vector matrix range exp_range assign exp initcell exp_time
+%token <str> T_STRING "string"	T_ID "identifier" T_HOOKCMD "HookCommand"
+%token T_ENDPOINT	
+
+%type <pnode> block block_func line line_func stmt funcdef elseif_list condition conditional case_list id_list arg arg_list vector matrix range exp_range assign exp initcell exp_time
 
 %right '='
 %left T_LOGIC_OR
@@ -64,10 +66,11 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 %left '<' '>' T_COMP_LE T_COMP_GE
 %left ':'
 %left '-' '+' T_OP_CONCAT
-%left T_OP_SHIFT T_OP_SHIFT2 '%' '@'
+%left T_OP_SHIFT T_OP_SHIFT2 '$' '%' '@'
 %left '*' '/'
 %right '^' /* exponentiation */
 %left T_LOGIC_NOT T_POSITIVE T_NEGATIVE /* unary plus/minus */
+
 
 /* the following two tokens MUST be the last two, for compatibility between cipsycon.tab.h and psycon.tab.h */
 %token T_USEC		"us"
@@ -104,6 +107,10 @@ void yyerror (AstNode **pproot, char **errmsg, char const *s);
 AstNode *newAstNode(int type, YYLTYPE loc);
 AstNode *makeFunctionCall(char *name, AstNode *first, AstNode *second, YYLTYPE loc);
 AstNode *makeBinaryOpNode(int op, AstNode *first, AstNode *second, YYLTYPE loc);
+AstNode *makeCompoundLevelOpNode(char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2);
+AstNode *makeCompoundOpNode(int op, char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2);
+AstNode *makeCompoundOpNodeFunctionCall(int op, char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2);
+AstNode *Restring(char *oper, char* dummy1, AstNode *dumm2, AstNode *dummy3, AstNode *dummy4, YYLTYPE loc);
 void print_token_value(FILE *file, int type, YYSTYPE value);
 %}
 
@@ -111,23 +118,31 @@ void print_token_value(FILE *file, int type, YYSTYPE value);
 input: /* empty */
 	{ *pproot = NULL;}
 	| block_func	/* can be NULL */
-	{ *pproot = $1;}
+	{ *pproot = $1;} //yyn=3
 ;
 
 block_func: line_func	/* block_func can be NULL */
 	{ $$ = $1; }
 	| block_func line_func
-	{
+	{ //yyn=5
 		if ($2) {
 			if ($1 == NULL)
 				$$ = $2;
-			else if ($1->type == NODE_BLOCK) {
-				$1->LastChild = $1->LastChild->next = $2;
-				$$ = $1;
-			} else {
+			else if ($1->type == NODE_BLOCK) 
+			{
+//				$$ = $1;
+				$1->tail->next = $2;
+				$1->tail = $2;
+			} 
+			else 
+			{ // a=1; b=2; ==> $1->type is '='. So first, a NODE_BLOCK tree should be made.
 				$$ = newAstNode(NODE_BLOCK, @$);
-				$$->child = $1;
-				$$->LastChild = $$->child->next = $2;
+				$$->next = $1;
+				$1->next = $$->tail = $2;
+#ifdef _DEBUG				
+				$$->str = (char*)malloc(32);
+				strcpy_s ($$->str, 32, "block_begins,yyn=5");
+#endif
 			}
 		} else
 			$$ = $1;
@@ -136,47 +151,53 @@ block_func: line_func	/* block_func can be NULL */
 
 block:	line	/* complicated to prevent NULL (make empty block instead) or single statement block */
 	{
-		if ($1)
+		if ($1) // if cond1, x=1, end ==> x=1 comes here.
 			$$ = $1;
 		else
 			$$ = newAstNode(NODE_BLOCK, @$);
 	}
-	| block line
+	| block line //yyn=7
 	{
 		if ($2) {
 			if ($1->type == NODE_BLOCK) {
-				if ($1->LastChild) {
-					$1->LastChild = $1->LastChild->next = $2;
-					$$ = $1;
+				if ($$->next) {
+//					$$ = $1;
+					$1->tail->next = $2;
+					$1->tail = $2;
 				} else {
 					$$ = $2;
 					free($1);
 				}
-			} else {
+			} else { //if the second argument doesn't have NODE_BLOCK, make one
 				$$ = newAstNode(NODE_BLOCK, @$);
-				$$->child = $1;
-				$$->LastChild = $$->child->next = $2;
+				$$->next = $1;
+				$1->next = $$->tail = $2;
+#ifdef _DEBUG				
+				$$->str = (char*)malloc(32);
+				strcpy_s ($$->str, 32, "block_begins,yyn=7");
+#endif				
 			}
-		} else
+		}
+		else // only "block" is given
 			$$ = $1;
 	}
 ;
 
-line:	T_NEWLINE
-	{ $$ = NULL;}
-	| error T_NEWLINE
-	{
+line:	T_NEWLINE 
+	{ $$ = NULL;} //yyn=8
+	| error T_NEWLINE 
+	{ //yyn=9
 		$$ = NULL;
 		yyerrok;
-	}
+	} 
 	| stmt eol
-	{ $$ = $1;}
+	{ $$ = $1;} //yyn=10
 ;
 
 line_func: line
-	{ $$ = $1;}
+	{ $$ = $1;} //yyn=11
 	| funcdef
-	{ $$ = $1;}
+	{ $$ = $1;} //yyn=12
 ;
 
 eol: ',' | ';' | T_NEWLINE | T_EOF
@@ -184,6 +205,7 @@ eol: ',' | ';' | T_NEWLINE | T_EOF
 
 func_end: /* empty */ | T_ENDFUNCTION | T_EOF
 ;
+
 
 exp_time: exp
 	{ $$ = $1;}
@@ -199,33 +221,70 @@ exp_time: exp
 	}
 ;
 
+conditional: condition
+	{	$$ = $1;	}
+	| condition eol
+	{	$$ = $1;	}
+	| exp
+	{	$$ = $1;	}
+	| exp eol
+	{	$$ = $1;	}
+;
+
+elseif_list: /*empty*/
+	{
+		$$ = newAstNode(T_IF, @$);
+	}
+	| T_ELSEIF conditional block elseif_list 
+	{
+		$$ = newAstNode(T_IF, @$);
+		$$->child = $2;
+		$2->next = $3;
+		$2->alt = $4;
+	}
+	| elseif_list T_ELSE block
+	{
+		if ($1->child==NULL) // in this case $1 is T_IF created as /*empty*/ 
+		{  
+			yydeleteAstNode($1, 1);
+			$$ = $3;
+		}
+		else
+		{
+			$$ = $1;
+			$1->alt = $3;
+		}
+	}
+;
+
 stmt: exp
 	{ $$ = $1;}
 	| assign
-	{ $$ = $1;}
+	{ $$ = $1;} //yyn=28
 	| condition
 	{ $$ = $1;}
-	| T_IF condition block elseif_list T_END
+	| initcell
+	{ $$ = $1;}
+	| T_HOOKCMD
 	{
-		$$ = $4;
-		$2->next = $3;
-		$3->next = $4->child;
-		$$->child = $2;
-		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$ = newAstNode(NODE_CALL, @$);
+ 		$$->str = malloc(strlen($1)+1);
+ 		strcpy($$->str, $1);
+ 		free($1);
 	}
-	| T_IF condition block elseif_list T_ELSE block T_END
-	{
-		$$ = $4;
-		$2->next = $3;
-		if ($4->LastChild) {
-			$3->next = $4->child;
-			$4->LastChild->next = $6;
-		} else
-			$3->next = $6;
+	| T_IF conditional block elseif_list T_END
+	{ // This works, too, for "if cond, act; end" without else, because elseif_list can be empty
+		$$ = newAstNode(T_IF, @$);
 		$$->child = $2;
+		$2->next = $3;
+		$2->alt = $4;
+		if ($4->child==NULL && $4->next==NULL) // When elseif_list is empty, T_IF is made, but no child and next
+		{
+			yydeleteAstNode($$->alt, 1);
+			$$->alt=NULL;
+		}
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
 	}
 	| T_SWITCH exp case_list T_END
 	{
@@ -233,22 +292,22 @@ stmt: exp
 		$2->next = $3->child;
 		$$->child = $2;
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
 	}
 	| T_SWITCH exp case_list T_OTHERWISE block T_END
 	{
 		$$ = $3;
 		$2->next = $3->child;
-		$3->LastChild->next = $5;
+		$3->tail->next = $5;
 		$$->child = $2;
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
 	}
-	| T_WHILE condition block T_END
+	| T_WHILE conditional block T_END
 	{
 		$$ = newAstNode(T_WHILE, @$);
-		$$->child = $2;
 		$2->next = $3;
+		$$->child = $2;
 	}
 	| T_FOR T_ID '=' exp_range block T_END
 	{
@@ -257,6 +316,14 @@ stmt: exp
 		$$->child->str = $2;
 		$$->child->child = $4;
 		$$->child->next = $5;
+	}
+	| T_FOR T_ID '=' exp_range ',' block T_END
+	{
+		$$ = newAstNode(T_FOR, @$);
+		$$->child = newAstNode('=', @2);
+		$$->child->str = $2;
+		$$->child->child = $4;
+		$$->child->next = $6;
 	}
 	| T_RETURN
 	{
@@ -307,7 +374,7 @@ stmt: exp
 		$10->next = $12;
 		$12->next = $14;
 		$14->next = $16;
-	}
+	}	
 ;
 
 funcdef: T_FUNCTION T_ID '(' id_list ')' block func_end
@@ -323,9 +390,19 @@ funcdef: T_FUNCTION T_ID '(' id_list ')' block func_end
 		$$->str = $4;
 		$$->child = $6;
 		$6->next = $8;
-		$8->next = newAstNode(T_ID, @2);
-		$8->next->str = $2;
+		$$->alt = newAstNode(NODE_VECTOR, @2);
+		$$->alt->child = $$->alt->tail = newAstNode(T_ID, @3);
+		$$->alt->child->str = $$->alt->tail->str = $2;
 	}
+	| T_FUNCTION '[' vector ']' '=' T_ID '(' id_list ')' block func_end
+	{
+		$$ = newAstNode(T_FUNCTION, @$);
+		$$->str = $6;
+		$$->child = $8;
+		$8->next = $10;
+		$$->alt = $3;
+
+		}
 	| T_FUNCTION T_ID '{' '}' '=' T_ID '(' id_list ')' block func_end
 	{
 		$$ = newAstNode(T_FUNCTION, @$);
@@ -334,28 +411,6 @@ funcdef: T_FUNCTION T_ID '(' id_list ')' block func_end
 		$8->next = $10;
 		$10->next = newAstNode(NODE_INITCELL, @2);
 		$10->next->str = $2;
-	}
-	| T_FUNCTION '[' vector ']' '=' T_ID '(' id_list ')' block func_end
-	{
-		$$ = newAstNode(T_FUNCTION, @$);
-		$$->str = $6;
-		$$->child = $8;
-		$8->next = $10;
-		$10->next = $3;
-	}
-;
-
-elseif_list: /* empty */
-	{ $$ = newAstNode(T_IF, @$);}
-	| elseif_list T_ELSEIF condition block
-	{
-		if ($1->child)
-			$1->LastChild->next = $3;
-		else
-			$1->child = $3;
-		$3->next = $4;
-		$1->LastChild = $4;
-		$$ = $1;
 	}
 ;
 
@@ -366,51 +421,92 @@ case_list: /* empty */
 	| case_list T_CASE exp T_NEWLINE block
 	{
 		if ($1->child)
-			$1->LastChild->next = $3;
+			$1->tail->next = $3;
 		else
 			$1->child = $3;
 		$3->next = $5;
-		$1->LastChild = $5;
+		$1->tail = $5;
 		$$ = $1;
 	}
 	| case_list T_CASE '{' arg_list '}' block
 	{
 		if ($1->child)
-			$1->LastChild->next = $4;
+			$1->tail->next = $4;
 		else
 			$1->child = $4;
 		$4->next = $6;
-		$1->LastChild = $6;
+		$1->tail = $6;
 		$$ = $1;
 	}
 ;
 
 condition: exp '<' exp
 	{ $$ = makeBinaryOpNode('<', $1, $3, @$);}
+	| range '<' exp
+	{ $$ = makeBinaryOpNode('<', $1, $3, @$);}
+	| exp '<' range
+	{ $$ = makeBinaryOpNode('<', $1, $3, @$);}
 	| exp '>' exp
+	{ $$ = makeBinaryOpNode('>', $1, $3, @$);}
+	| range '>' exp
+	{ $$ = makeBinaryOpNode('>', $1, $3, @$);}
+	| exp '>' range
 	{ $$ = makeBinaryOpNode('>', $1, $3, @$);}
 	| exp T_COMP_EQ exp
 	{ $$ = makeBinaryOpNode(T_COMP_EQ, $1, $3, @$);}
+	| range T_COMP_EQ exp
+	{ $$ = makeBinaryOpNode(T_COMP_EQ, $1, $3, @$);}
+	| exp T_COMP_EQ range
+	{ $$ = makeBinaryOpNode(T_COMP_EQ, $1, $3, @$);}
 	| exp T_COMP_NE exp
 	{ $$ = makeBinaryOpNode(T_COMP_NE, $1, $3, @$);}
-	| exp T_COMP_LE exp
-	{ $$ = makeBinaryOpNode(T_COMP_LE, $1, $3, @$);}
+	| range T_COMP_NE exp
+	{ $$ = makeBinaryOpNode(T_COMP_NE, $1, $3, @$);}
+	| exp T_COMP_NE range
+	{ $$ = makeBinaryOpNode(T_COMP_NE, $1, $3, @$);}
 	| exp T_COMP_GE exp
 	{ $$ = makeBinaryOpNode(T_COMP_GE, $1, $3, @$);}
+	| range T_COMP_GE exp
+	{ $$ = makeBinaryOpNode(T_COMP_GE, $1, $3, @$);}
+	| exp T_COMP_GE range
+	{ $$ = makeBinaryOpNode(T_COMP_GE, $1, $3, @$);}
+	| exp T_COMP_LE exp
+	{ $$ = makeBinaryOpNode(T_COMP_LE, $1, $3, @$);}
+	| range T_COMP_LE exp
+	{ $$ = makeBinaryOpNode(T_COMP_LE, $1, $3, @$);}
+	| exp T_COMP_LE range
+	{ $$ = makeBinaryOpNode(T_COMP_LE, $1, $3, @$);}
 	| '(' condition ')'
 	{
 		$$ = $2;
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
 	}
-	| '~' condition %prec T_LOGIC_NOT
+	| '!' condition %prec T_LOGIC_NOT
+	{
+		$$ = newAstNode(T_LOGIC_NOT, @$);
+		$$->child = $2;
+	}
+	| '!' exp %prec T_LOGIC_NOT
 	{
 		$$ = newAstNode(T_LOGIC_NOT, @$);
 		$$->child = $2;
 	}
 	| condition T_LOGIC_AND condition
 	{ $$ = makeBinaryOpNode(T_LOGIC_AND, $1, $3, @$);}
+	| exp T_LOGIC_AND exp
+	{ $$ = makeBinaryOpNode(T_LOGIC_AND, $1, $3, @$);}
+	| condition T_LOGIC_AND exp
+	{ $$ = makeBinaryOpNode(T_LOGIC_AND, $1, $3, @$);}
+	| exp T_LOGIC_AND condition
+	{ $$ = makeBinaryOpNode(T_LOGIC_AND, $1, $3, @$);}
 	| condition T_LOGIC_OR condition
+	{ $$ = makeBinaryOpNode(T_LOGIC_OR, $1, $3, @$);}
+	| exp T_LOGIC_OR exp
+	{ $$ = makeBinaryOpNode(T_LOGIC_OR, $1, $3, @$);}
+	| condition T_LOGIC_OR exp
+	{ $$ = makeBinaryOpNode(T_LOGIC_OR, $1, $3, @$);}
+	| exp T_LOGIC_OR condition
 	{ $$ = makeBinaryOpNode(T_LOGIC_OR, $1, $3, @$);}
 ;
 
@@ -421,31 +517,31 @@ id_list: /* empty */
 	| T_ID
 	{
 		$$ = newAstNode(NODE_IDLIST, @$);
-		$$->child = $$->LastChild = newAstNode(T_ID, @$);
-		$$->LastChild->str = $1;
+		$$->child = $$->tail = newAstNode(T_ID, @$);
+		$$->tail->str = $1;
 	}
 	| T_ID '{' '}'
 	{
 		$$ = newAstNode(NODE_IDLIST, @$);
-		$$->child = $$->LastChild = newAstNode(NODE_INITCELL, @$);
-		$$->LastChild->str = $1;
+		$$->child = $$->tail = newAstNode(NODE_INITCELL, @$);
+		$$->tail->str = $1;
 	}
 	| id_list ',' T_ID
 	{
-		$1->LastChild = $1->LastChild->next = newAstNode(T_ID, @3);
+		$1->tail = $1->tail->next = newAstNode(T_ID, @3);
 		$$ = $1;
-		$$->LastChild->str = $3;
+		$$->tail->str = $3;
 	}
 	| id_list ',' T_ID '{' '}'
 	{
-		$1->LastChild = $1->LastChild->next = newAstNode(NODE_INITCELL, @3);
+		$1->tail = $1->tail->next = newAstNode(NODE_INITCELL, @3);
 		$$ = $1;
-		$$->LastChild->str = $3;
+		$$->tail->str = $3;
 	}
 ;
 
 arg: exp_range
-	{ $$ = $1; }
+	{ $$ = $1; } //yyn=85
 	| initcell
 	{ $$ = $1; }
 ;
@@ -453,11 +549,11 @@ arg: exp_range
 arg_list: arg
 	{
 		$$ = newAstNode(NODE_ARGS, @$);
-		$$->child = $$->LastChild = $1;
+		$$->child = $$->tail = $1;
 	}
 	| arg_list ',' arg
 	{
-		$1->LastChild = $1->LastChild->next = $3;
+		$1->tail = $1->tail->next = $3;
 		$$ = $1;
 	}
 ;
@@ -469,11 +565,11 @@ matrix: /* empty */
 	| vector
 	{
 		$$ = newAstNode(NODE_MATRIX, @$);
-		$$->child = $$->LastChild = $1;
+		$$->child = $$->tail = $1;
 	}
 	| matrix ';' vector
 	{
-		$1->LastChild = $1->LastChild->next = $3;
+		$1->tail = $1->tail->next = $3;
 		$$ = $1;
 	}
 ;
@@ -481,16 +577,16 @@ matrix: /* empty */
 vector: exp_range
 	{
 		$$ = newAstNode(NODE_VECTOR, @$);
-		$$->child = $$->LastChild = $1;
+		$$->child = $$->tail = $1;
 	}
 	| vector exp_range
 	{
-		$1->LastChild = $1->LastChild->next = $2;
+		$1->tail = $1->tail->next = $2;
 		$$ = $1;
 	}
 	| vector ',' exp_range
 	{
-		$1->LastChild = $1->LastChild->next = $3;
+		$1->tail = $1->tail->next = $3;
 		$$ = $1;
 	}
 ;
@@ -502,7 +598,7 @@ range: exp ':' exp
 	| exp ':' exp ':' exp
 	{
 		$$ = makeFunctionCall(":", $1, $5, @$);
-		$$->LastChild = $5->next = $3;
+		$$->tail = $5->next = $3;
 	}
 ;
 
@@ -518,27 +614,146 @@ assign: T_ID '=' exp_range
 		$$->str = $1;
 		$$->child = $3;
 	}
-	| T_ID '{' exp '}' '=' exp_range
+	| '[' vector ']' '=' exp_range
+	{ // Only to be used when RHS is a UDF. 5/18/2017 bjkwon
+		$$ = newAstNode('=', @$);
+		$$->child = $5;
+		$$->alt = $2;
+	}
+	| T_ID '=' condition
 	{
 		$$ = newAstNode('=', @$);
 		$$->str = $1;
-		$$->child = $6;
-		$6->next = $3;
+		$$->child = $3;
 	}
-	| T_ID '(' arg_list ')' '=' exp_range
+	| T_ID "+=" exp_range
 	{
+		$$ = newAstNode('=', @$);
+		$$->str = $1;
+		$$->child = makeCompoundOpNode('+', $1, $3, @3, @1);
+	}
+	| T_ID "-=" exp_range
+	{
+		$$ = newAstNode('=', @$);
+		$$->str = $1;
+		$$->child = makeCompoundOpNode('-', $1, $3, @3, @1);
+	}
+	| T_ID "*=" exp_range
+	{
+		$$ = newAstNode('=', @$);
+		$$->str = $1;
+		$$->child = makeCompoundOpNode('*', $1, $3, @3, @1);
+	}
+	| T_ID "/=" exp_range
+	{
+		$$ = newAstNode('=', @$);
+		$$->str = $1;
+		$$->child = makeCompoundOpNode('/', $1, $3, @3, @1);
+	}
+	| T_ID "^=" exp_range
+	{
+		$$ = newAstNode('=', @$);
+		$$->str = $1;
+		$$->child = makeCompoundOpNodeFunctionCall('^', $1, $3, @3, @1);
+	}
+	| T_ID "@=" exp_range
+	{
+		$$ = newAstNode('=', @$);
+		$$->str = $1;
+		$$->child = makeCompoundOpNode('@', $1, $3, @3, @1);
+	}
+	| T_ID "@@=" exp_range
+	{ 
+		$$ = newAstNode('=', @$);
+		$$->str = $1; 
+		$$->child = makeCompoundLevelOpNode($1, $3, @1, @3);
+	}
+	| T_ID "++=" exp_range
+	{
+		$$ = newAstNode('=', @$);
+		$$->str = $1;
+		$$->child = makeCompoundOpNode(T_OP_CONCAT, $1, $3, @3, @1);
+	}
+	| T_ID '{' exp '}' '=' exp_range
+	{
+		$$ = newAstNode(NODE_INITCELL, @$);
+		$$->str = $1;
+		$$->child = $6;
+		$$->alt = $3;
+	}
+	| T_ID '(' exp '~' exp ')' "+=" exp_range
+	{
+		$$ = Restring("+=", $1, $3, $5, $8, @$);
+	}
+	| T_ID '(' exp '~' exp ')' "-=" exp_range
+	{
+		$$ = Restring("-=", $1, $3, $5, $8, @$);
+	}
+	| T_ID '(' exp '~' exp ')' "*=" exp_range
+	{
+		$$ = Restring("*=", $1, $3, $5, $8, @$);
+	}
+	| T_ID '(' exp '~' exp ')' "/=" exp_range
+	{
+		$$ = Restring("/=", $1, $3, $5, $8, @$);
+	}
+	| T_ID '(' exp '~' exp ')' "@=" exp_range
+	{
+		$$ = Restring("@=", $1, $3, $5, $8, @$);
+	}
+	| T_ID '(' exp '~' exp ')' "@@=" exp_range
+	{
+		$$ = Restring("@@=", $1, $3, $5, $8, @$);
+	}
+	| T_ID '(' arg_list ')' '=' exp_range 
+	{ /* x(45)=723 or x(id1:id2) = id1:id2  or x(array) = scalar */
 		$$ = newAstNode(NODE_IXASSIGN, @$);
 		$$->str = $1;
 		$$->child = $6;
-		$6->next = $3;
+		$$->alt = $3;
 	}
-	| T_ID '{' exp '}' '(' exp ')' '=' exp_range
+	| T_ID '(' condition ')' '=' exp_range
+	{ /* x(x>0) = scalar */
+		$$ = newAstNode(NODE_IXASSIGN, @$);
+		$$->str = $1;
+		$$->child = $6;
+		$$->alt = $3;
+	}
+	| T_ID '(' exp '~' exp ')' '=' exp
 	{
 		$$ = newAstNode(NODE_IXASSIGN, @$);
+		$$->str = $1;
+		$$->child = $8;
+		$$->alt = newAstNode(NODE_IDLIST, @$);
+		$$->alt->child = $5;
+		$$->alt->alt = $3;
+	}
+	| T_ID '{' exp '}' '(' exp '~' exp ')' '=' exp
+	{
+		$$ = newAstNode(NODE_INITCELL, @$);
+		$$->str = $1;
+		$$->child = $11;
+		$$->alt = $3;
+		$3->alt = newAstNode(NODE_IDLIST, @$);
+		$3->alt->child = $8;
+		$3->alt->alt = $6;
+	}
+	//T_ID '{' exp '}' '(' arg_list ')' '=' exp_range  -->  does not work 4/8/2017 bjk
+	| T_ID '{' exp '}' '(' exp ')' '=' exp_range
+	{ // v{2}(4)=1 
+		$$ = newAstNode(NODE_INITCELL, @$);
 		$$->str = $1;
 		$$->child = $9;
-		$9->next = $6;
-		$6->next = $3;
+		$$->alt = $3;
+		$3->next = $6;
+	}	
+	| T_ID '{' exp '}' '(' exp_range ')' '=' exp_range
+	{ // v{2}(4:6)=1 
+		$$ = newAstNode(NODE_INITCELL, @$);
+		$$->str = $1;
+		$$->child = $9;
+		$$->alt = $3;
+		$3->next = $6;
 	}
 	| T_ID '=' assign
 	{
@@ -551,44 +766,29 @@ assign: T_ID '=' exp_range
 		$$ = newAstNode('=', @$);
 		$$->str = $1;
 		$$->child = $6;
-		$6->next = $3;
+		$6->alt = $3;
 	}
 	| T_ID '(' arg_list ')' '=' assign
 	{
 		$$ = newAstNode(NODE_IXASSIGN, @$);
 		$$->str = $1;
 		$$->child = $6;
-		$6->next = $3;
+		$6->alt = $3;
 	}
 	| T_ID '{' exp '}' '(' exp ')' '=' assign
 	{
 		$$ = newAstNode(NODE_IXASSIGN, @$);
 		$$->str = $1;
 		$$->child = $9;
-		$9->next = $6;
-		$6->next = $3;
+		$9->alt = $6;
+		$6->alt = $3;
 	}
-	| T_ID '=' initcell
-	{
+	| T_ID '=' initcell 
+	{ // x={"bjk",noise(300), 4.5555}
 		$$ = $3;
 		$$->str = $1;
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
-	}
-	| T_ID '{' '}' '=' T_ID '(' arg_list ')'
-	{
-		$$ = newAstNode(NODE_CALL, @$);
-		$$->str = $5;
-		$$->child = $7;
-		$7->next = newAstNode(NODE_INITCELL, @1);
-		$7->next->str = $1;
-	}
-	| '[' vector ']' '=' T_ID '(' arg_list ')'
-	{
-		$$ = newAstNode(NODE_CALL, @$);
-		$$->str = $5;
-		$$->child = $7;
-		$7->next = $2;
+		$$->col = @$.first_column;
 	}
 ;
 
@@ -602,10 +802,20 @@ exp: T_NUMBER
 		$$ = newAstNode(T_STRING, @$);
 		$$->str = $1;
 	}
+	| T_ENDPOINT
+	{
+		$$ = newAstNode(T_ENDPOINT, @$);
+		$$->str = NULL;
+	}
+	| initcell
+	{
+		$$ = $1;
+	}
 	| T_ID
 	{
 		$$ = newAstNode(T_ID, @$);
 		$$->str = $1;
+//		yyPrintf("T_ID", $$);
 	}
 	| T_ID '{' exp '}'
 	{
@@ -618,7 +828,18 @@ exp: T_NUMBER
 		$$ = newAstNode(T_ID, @$);
 		$$->str = $1;
 		$$->child = $3;
-		$3->next = $6;
+		$3->alt = $6;
+	}
+	| T_ID '{' exp '}' '(' exp_range ')'
+	{
+		$$ = newAstNode(T_ID, @$);
+		$$->str = $1;
+		$$->child = $3;
+		$3->alt = $6;
+	}
+	| '{' '}'
+	{
+		$$ = newAstNode(NODE_INITCELL, @$);
 	}
 	| T_ID '{' '}'
 	{
@@ -626,7 +847,7 @@ exp: T_NUMBER
 		$$->str = $1;
 	}
 	| T_ID '(' ')'
-	{
+	{ // I don't know what this is doing.... bjk 3/28/2017 
 		$$ = newAstNode(NODE_CALL, @$);
  		$$->str = $1;
 	}
@@ -636,17 +857,25 @@ exp: T_NUMBER
 		$$->type = NODE_CALL;
  		$$->str = $1;
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
 	}
-	| '#' T_ID '(' ')'
+	| T_REPLICA '(' arg_list ')'
+	{
+		$$ = newAstNode(T_REPLICA, @$);
+		$$->child = $3;
+		$$->child->type = NODE_CALL;
+		// At this point, this makes NODE_CALL with NULL str. This is to be resolved in AstSig.cpp-----AstNode *tp = searchtree(p, NODE_CALL);
+	}
+	| T_ID '(' condition ')'
 	{
 		$$ = newAstNode(NODE_CALL, @$);
- 		$$->str = malloc(strlen($2)+2);
- 		$$->str[0] = '#';
- 		strcpy($$->str+1, $2);
- 		free($2);
+ 		$$->str = $1;
+		$$->child = $3;
+		$$->tail = $3; // leaving a mark for conditional indexing 3/28/2017 bjk
+		$$->line = @$.first_line;
+		$$->col = @$.first_column;
 	}
-	| '#' T_ID '(' arg_list ')'
+	| '#' T_ID '(' arg_list ')' // don't need any more.  left here for backw comp. 7/4/2017.
 	{
 		$$ = $4;
 		$$->type = NODE_CALL;
@@ -655,7 +884,7 @@ exp: T_NUMBER
  		strcpy($$->str+1, $2);
  		free($2);
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
 	}
 	| T_ID '(' exp '~' exp ')'
 	{
@@ -674,13 +903,13 @@ exp: T_NUMBER
 	{
 		$$ = $2;
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
 	}
 	| '(' exp_range ')'
 	{
 		$$ = $2;
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
 	}
 	| T_SIGMA '(' T_ID '=' exp_range ',' exp ')'
 	{
@@ -702,6 +931,8 @@ exp: T_NUMBER
 	{ $$ = makeFunctionCall("^", $1, $3, @$);}
 	| exp '%' exp
 	{ $$ = makeFunctionCall("caret", $1, $3, @$);}
+	| exp '$' exp
+	{ $$ = makeFunctionCall("shift_spectrum", $1, $3, @$);}
 	| exp '@' exp
 	{ $$ = makeBinaryOpNode('@', $1, $3, @$);}
 	| exp '@' exp '|' exp
@@ -710,7 +941,7 @@ exp: T_NUMBER
 		$$->child = $1;
 		$1->next = $3;
 		$3->next = $5;
-		$$->LastChild = $5;
+		$$->tail = $5;
 	}
 	| exp T_OP_SHIFT exp
 	{ $$ = makeBinaryOpNode(T_OP_SHIFT, $1, $3, @$);}
@@ -722,13 +953,18 @@ exp: T_NUMBER
 	{
 		$$ = $2;
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
 	}
 	| '[' vector ']'
 	{
 		$$ = $2;
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
+	}
+	| T_REPLICA
+	{
+		$$ = newAstNode(T_REPLICA, @$);
+		$$->str = NULL;
 	}
 ;
 
@@ -737,7 +973,7 @@ initcell: '{' arg_list '}'
 		$$ = $2;
 		$$->type = NODE_INITCELL;
 		$$->line = @$.first_line;
-		$$->column = @$.first_column;
+		$$->col = @$.first_column;
 	}
 ;
 
@@ -848,6 +1084,9 @@ char *getAstNodeName(AstNode *p)
   case NODE_INTERPOL:
     sprintf_s(buf, NODE_NAME_MAX, "INTERPOL");
     break;
+  case NODE_RESTRING:
+    sprintf_s(buf, NODE_NAME_MAX, "RESTRING");
+    break;
   default:
     if (YYTRANSLATE(p->type) == 2)
       sprintf_s(buf, NODE_NAME_MAX, "[%d]", p->type);
@@ -865,7 +1104,7 @@ AstNode *makeFunctionCall(char *name, AstNode *first, AstNode *second, YYLTYPE l
 	nn = newAstNode(NODE_CALL, loc);
 	nn->str = strdup(name);
 	nn->child = first;
-	nn->LastChild = first->next = second;
+	nn->tail = first->next = second;
 	return nn;
 }
 
@@ -875,7 +1114,70 @@ AstNode *makeBinaryOpNode(int op, AstNode *first, AstNode *second, YYLTYPE loc)
 
 	nn = newAstNode(op, loc);
 	nn->child = first;
-	nn->LastChild = first->next = second;
+	nn->tail = first->next = second;
+	return nn;
+}
+
+AstNode *makeCompoundOpNode(int op, char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2)
+{
+	AstNode *nn;
+	char *tempstrpt;
+	nn = newAstNode(op, loc1);
+	nn->child = newAstNode(T_ID, loc1);
+	tempstrpt = (char*)malloc(strlen(first)+1); /* This will be cleaned up during yydeleteAstNode().*/
+	strcpy_s(tempstrpt, strlen(first)+1, first);
+	nn->child->str = tempstrpt;
+	nn->tail = nn->child->next = second;
+	return nn;
+}
+
+AstNode *makeCompoundOpNodeFunctionCall(int op, char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2)
+{
+	AstNode *nn;
+	char *tempstrpt, *tempstrpt2;
+	
+	nn = newAstNode(NODE_CALL, loc2);
+	tempstrpt = (char*)calloc(2,1); /* This will be cleaned up during yydeleteAstNode().*/ /* because this is for op which is a char*/
+	tempstrpt[0] = op;
+	nn->str = strdup(tempstrpt);
+	nn->tail = second;
+	
+	nn->child = newAstNode(T_ID, loc1);
+	tempstrpt2 = (char*)malloc(strlen(first)+1); /* This will be cleaned up during yydeleteAstNode().*/
+	strcpy_s(tempstrpt2, strlen(first)+1, first);
+	nn->child->str = tempstrpt2;
+	nn->tail = nn->child->next = second;
+	return nn;
+}
+
+AstNode *makeCompoundLevelOpNode(char *first, AstNode *second, YYLTYPE loc1, YYLTYPE loc2)
+{
+	AstNode *nn;
+	
+	char *tempstrpt, *tempstrpt2;
+	tempstrpt = malloc(strlen(first)+1); /* To be cleaned up automatically by yydeleteAstNode */
+	strcpy_s(tempstrpt, strlen(first)+1, first); 
+	tempstrpt2 = malloc(strlen(first)+1); /* To be cleaned up automatically by yydeleteAstNode */
+	strcpy_s(tempstrpt2, strlen(first)+1, first); 
+	
+	nn = newAstNode('@', loc2);
+	nn->child = newAstNode('@', loc2);
+	nn->child->child = newAstNode(T_ID, loc1);
+	nn->child->child->str = tempstrpt;
+	nn->child->tail = nn->child->child->next = newAstNode(T_ID, loc1);
+	nn->child->tail->str = tempstrpt2;
+	nn->tail = nn->child->next = second;
+	return nn;
+}
+
+AstNode *Restring(char *oper, char* dummy1, AstNode *dumm2, AstNode *dummy3, AstNode *dummy4, YYLTYPE loc)
+{
+	AstNode *nn;
+	char *tempstrpt;
+	tempstrpt = (char*)malloc(8); /* To be cleaned up during yydeleteAstNode().*/
+	strcpy_s(tempstrpt, 8, oper);
+	nn = newAstNode(NODE_RESTRING, loc);
+	nn->str = tempstrpt;
 	return nn;
 }
 
@@ -895,7 +1197,7 @@ AstNode *newAstNode(int type, YYLTYPE loc)
     printf("created node %d: %s\n", ++cnt, getAstNodeName(nn));
 #endif
   nn->line = loc.first_line;
-  nn->column = loc.first_column;
+  nn->col = loc.first_column;
   return nn;
 }
 
@@ -924,4 +1226,11 @@ int yydeleteAstNode(AstNode *p, int fSkipNext)
   }
   free(p);
   return 0;
+}
+
+int yyPrintf(const char *msg, AstNode *p)
+{
+	if (p)
+		printf("[%16s]token type: %d, %s, \n", msg, p->type, p->str);
+	return 1;
 }

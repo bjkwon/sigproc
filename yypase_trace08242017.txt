@@ -1,0 +1,33 @@
+x=wave("filename")
+131	98	86	88	141	98	101	28	16
+10
+11
+4
+3
+xx=x(1:777)
+130	130	96	99	86	88	141	98	101	28	16
+10
+11
+4
+3
+
+130	exp: T_NUMBER
+96	range: exp ':' exp
+99	exp_range: range
+86	arg: exp_range
+88	arg_list: arg
+141	exp: T_ID '(' arg_list ')'
+98	exp_range: exp
+101	assign: T_ID '=' exp_range
+28	stmt: assign
+16	eol: T_EOF
+10	line: stmt eol
+11	line_func: line
+4	block_func: line_func
+3	input: block_func
+
+130	130	96	99	147	98	100	28	16
+10
+11
+4
+3

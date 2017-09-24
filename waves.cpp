@@ -1,5 +1,3 @@
-#ifndef NO_PLAYSND
-
 #include <windows.h>
 #include <stdio.h>
 #include <math.h>
@@ -13,6 +11,18 @@
 
 static char errmsg[2048];
 HWND hMainAppl(NULL);
+
+EXP_CS void SetHWND_SIGPROC(HWND h)
+{
+	hMainAppl = h;
+}
+
+EXP_CS HWND GetHWND_SIGPROC()
+{
+	return hMainAppl;
+}
+
+#ifndef NO_PLAYSND
 
 //This handles MM error for the function (PlayArray) return only inside Thread4MM
 #define MMERR(X) if ((X)!=MMSYSERR_NOERROR) {char *__rpst, *__rpst2, __fbuff[2048]; strcpy(__fbuff, #X); \
@@ -521,15 +531,6 @@ EXP_CS void TerminateLoop(void *pWavePlay)
 	waveOutBreakLoop(pWP->hwo);
 }
 
-EXP_CS void SetHWND_SIGPROC(HWND h)
-{
-	hMainAppl = h;
-}
-
-EXP_CS HWND GetHWND_SIGPROC()
-{
-	return hMainAppl;
-}
 #endif // NO_PLAYSND
 
 

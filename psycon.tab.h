@@ -66,15 +66,15 @@
      T_COMP_GE = 281,
      T_LOGIC_AND = 282,
      T_LOGIC_OR = 283,
-     T_NUMBER = 284,
-     T_STRING = 285,
-     T_ID = 286,
-     T_HOOKCMD = 287,
-     T_ENDPOINT = 288,
-     T_NEGATIVE = 289,
-     T_POSITIVE = 290,
-     T_LOGIC_NOT = 291,
-     T_REPLICA = 292
+     T_REPLICA = 284,
+     T_NUMBER = 285,
+     T_STRING = 286,
+     T_ID = 287,
+     T_HOOKCMD = 288,
+     T_ENDPOINT = 289,
+     T_NEGATIVE = 290,
+     T_POSITIVE = 291,
+     T_LOGIC_NOT = 292
    };
 #endif
 
