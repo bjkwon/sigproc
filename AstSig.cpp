@@ -1267,7 +1267,7 @@ try {
 			else
 				throw CAstException(p, this, "LHS variable not available to replicate on the RHS.", pnode->str);
 			AstNode *tp = searchtree(p, NODE_CALL);
-			if (!tp->str)
+			if (tp && !tp->str)
 			{
 				tp->str = (char*)malloc(strlen(pnode->str)+1);
 				strcpy(tp->str, pnode->str);
@@ -1763,11 +1763,8 @@ try {
 		throw errmsg;
 } catch (const exception &e) {
 	throw CAstException(pnode, this, string("Internal error! ") + e.what());
-} catch (CAstSig *main) {
-	if (main->dstatus == aborting)
-		main->cleanup_sons();
-}
-	return Sig;
+} 
+return Sig;
 }
 
 CAstSig &CAstSig::Reset(const int fs, const char* path)
