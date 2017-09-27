@@ -698,8 +698,6 @@ void CAstSig::cleanup_sons()
 		tp = up;
 	}
 	tp->son = NULL;
-	if (dstatus == aborting)
-		throw "debug_abort";
 #endif 
 #endif // #ifdef XCOM
 }
@@ -1756,11 +1754,6 @@ try {
 	default:
 		throw CAstException(pnode, this, "Internal error! Unknown node type - ", pnode->type);
 	}
-} catch (const char *errmsg) {
-	if (strcmp(errmsg,"debug_abort"))
-		throw CAstException(pnode, this, errmsg);
-	else
-		throw errmsg;
 } catch (const exception &e) {
 	throw CAstException(pnode, this, string("Internal error! ") + e.what());
 } 
@@ -1773,23 +1766,12 @@ CAstSig &CAstSig::Reset(const int fs, const char* path)
 	for (it=pEnv->UDFs.begin(); it!=pEnv->UDFs.end(); it++)
 		yydeleteAstNode(it->second, 0);
 	pEnv->UDFs.clear();
-//	pEnv->Refs.clear();
 	Vars.clear();
-//	pEnv->ArrRefs.clear();
-//	pEnv->Arrays.clear();
 	if (path)	pEnv->AuxPath=path; // I don't know if this might cause a trouble.
 	if (fs > 1)
 		pEnv->Fs = fs;
 	return *this;
 }
-
-bool CAstSig::IsNoDebugCompute()
-{
-	//if (typeLast==ID_DEBUG_STEP) return false;
-	//if (typeLast==ID_DEBUG_STEPIN) return false;
-	return nextBreakPoint == 0xffff;
-}
-
 
 CSignals *CAstSig::RetrieveVar(const char *tagname)
 {

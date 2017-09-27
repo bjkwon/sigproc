@@ -471,7 +471,6 @@ private:
 	int breakpoint(const AstNode *pnode);
 #endif
 
-	bool IsNoDebugCompute();
 	void HandleAuxFunctions(const AstNode *pnode);
 	AstNode *RetrieveUDF(const char *fname);
 	CSignals &getlhs(const AstNode *pnode, CSignals *tagsig, CSignals &isig);
