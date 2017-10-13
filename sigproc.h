@@ -447,11 +447,11 @@ public:
 	const AstNode *pnodeLast;
 	AstNode *pCall;
 	AstNode *lhs;
-	char *lhsvar;
 	CAstSig *son;
 	CAstSig *dad;
 	AstNode *pLast;
 	DEBUG_STATUS dstatus;
+	string fullUDFpath;
 private:
 	static const int DefaultFs = 22050;
 	string Script;
@@ -463,14 +463,6 @@ protected:
 	int typeLast;
 
 private:
-#ifdef _WINDOWS
-#ifndef CISIGPROC  
-	void debug_appl_manager(const CAstSig *debugAstSig, int debug_status, int line=-1);
-	int debugcatch(const AstNode *pBlock=NULL);
-#endif
-	int breakpoint(const AstNode *pnode);
-#endif
-
 	void HandleAuxFunctions(const AstNode *pnode);
 	AstNode *RetrieveUDF(const char *fname);
 	CSignals &getlhs(const AstNode *pnode, CSignals *tagsig, CSignals &isig);
@@ -481,9 +473,9 @@ private:
 	CSignals &extract(CSignal &Sig, body &isig);
 	bool checkcond(const AstNode *p);
 	AstNode *get_tree_on_line(const AstNode *pnode, int line);
-	bool IsThisBreakpoint(const AstNode *pnode);
 
 public:
+	bool IsThisBreakpoint(const AstNode *pnode);
 	void checkAudioSig(const AstNode *pnode, CSignals &checkthis, string addmsg="");
 	void checkComplex (const AstNode *pnode, CSignals &checkthis);
 	void checkVector(const AstNode *pnode, CSignals &checkthis, string addmsg="");
@@ -494,7 +486,7 @@ public:
 	void blockComplex(const AstNode *pnode, CSignals &checkthis);
 	void cleanup_sons();
 	const char* baseudfname();
-	bool CheckPrepareCallUDF(int type, const AstNode *pnode);
+	bool CheckPrepareCallUDF(const AstNode *pnode);
 	void CallUDF(int debug_status=0);
 	void (*CallbackCIPulse)(const AstNode *, CAstSig *);
 	int (*CallbackHook)(CAstSig &ast, const AstNode *pnode, const AstNode *p);
@@ -514,6 +506,17 @@ public:
 	EXP_CS AstNode* SetNewScriptFromFile(const char *str, FILE *source);
 	EXP_CS CSignals &Compute(void);
 	EXP_CS CSignals &Compute(const AstNode *pnode);
+	EXP_CS CSignals &CellAssign(const AstNode *pnode, AstNode *p);
+	EXP_CS CSignals &Assign(const AstNode *pnode, AstNode *p);
+	
+	EXP_CS CSignals &t_id(const AstNode *pnode, AstNode *p);
+	EXP_CS CSignals &NodeInterpol(const AstNode *pnode, AstNode *p);
+	EXP_CS CSignals &SetLevel(const AstNode *pnode, AstNode *p);
+	EXP_CS CSignals &NodeVector(const AstNode *pnode, AstNode *p);
+	EXP_CS CSignals &NodeMatrix(const AstNode *pnode, AstNode *p);
+	EXP_CS CSignals &IxAssign(const AstNode *pnode, AstNode *p);
+	EXP_CS CSignals &NodeExtract(const AstNode *pnode, AstNode *p);
+	EXP_CS CSignals &NodeCall(const AstNode *pnode, AstNode *p);
 	EXP_CS CSignals &Eval(AstNode *pnode);
 	EXP_CS CAstSig &Reset(const int fs = 0, const char* path=NULL);
 	EXP_CS CAstSig &SetVar(const char *name, const CSignals &sig);
