@@ -771,7 +771,7 @@ void aux_playloop(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	for (const AstNode *cp=p; cp; cp=cp->next, k++)
 	{
 		ast.Compute(cp);
-		ast.Sig.PlayArray(0, WM_APP+100, GetHWND_SIGPROC(), &dontcare, errstr,1);
+		ast.Sig.PlayArray(0, WM_APP+100, GetHWND_WAVPLAY(), &dontcare, errstr,1);
 	}
 }
 
@@ -975,7 +975,8 @@ void aux_include(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 			CAstSig tast(&ast);
 			tast.SetNewScriptFromFile(filename.c_str(), auxfile);
 			fclose(auxfile);
-			ast.Sig = tast.Compute();
+			vector<CSignals> res = tast.Compute();
+			ast.Sig = res.back();
 		} catch (const char *errmsg) {
 			fclose(auxfile);
 			throw CAstException(pnode, &ast, "Including "+filename+"\n\nIn the file: \n"+errmsg);
@@ -992,7 +993,8 @@ void aux_eval(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	string str = ast.ComputeString(p);
 	try {
 		CAstSig tast(str.c_str(), &ast);
-		ast.Sig = tast.Compute();
+		vector<CSignals> res = tast.Compute();
+		ast.Sig = res.back();
 	} catch (const char *errmsg) {
 		throw CAstException(pnode, &ast, "Evaluating\n"+str+"\n\nIn the string: \n"+errmsg);
 	}
@@ -1367,7 +1369,7 @@ void aux_iir(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	if  (!strcmp(pnode->str,"lpf")) {	type=1; sprintf(emsg, "%s%s\n", pnode->str, emsg1.c_str()); }
 	else if  (!strcmp(pnode->str,"bpf")) { type=2; sprintf(emsg, "%s%s\n", pnode->str, emsg2.c_str()); }
 	else if  (!strcmp(pnode->str,"hpf")) { type=3; sprintf(emsg, "%s%s\n", pnode->str, emsg1.c_str()); }
-	else if  (!strcmp(pnode->str,"bsf")) { type=4; sprintf(emsg, "%s%s\n", pnode->str, emsg2); }
+	else if  (!strcmp(pnode->str,"bsf")) { type=4; sprintf(emsg, "%s%s\n", pnode->str, emsg2.c_str()); }
 	args = p;
 	switch(type)
 	{

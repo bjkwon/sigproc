@@ -853,13 +853,14 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 		ast.blockComplex(pnode,  tp);
 	}
 
-	static	CSignals dumma;
+	CSignals dumma;
 	static	vector<CSignals> args;
 	args.clear();
 //	blocksize = ast.pEnv->GetPlayBlockSize();
 	dumma.SetValue(nArgs);
-	for (int k=0; k<nArgs; k++) 
-		args.push_back(dumma);
+	args.resize(nArgs);
+//	for (int k=0; k<nArgs; k++) 
+//		args.push_back(dumma);
 	switch(nArgs)
 	{
 	case 3:
@@ -896,14 +897,14 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	}
 	if (nArgs<3 && args[nArgs-1].GetType()!=CSIG_STRING) args.push_back(dumma), args.back().SetString("-b");
 	getLineSpecifier (ast, pnode, args.back().string(), linestyle, marker, col); // check if the line format string is valid
-//	CSignals threadID((double)GetCurrentThreadId());
+//	CSignals threadID((double)GetCurrentThreadId());`
 //	args.push_back(threadID);
 
 	static GRAFWNDDLGSTRUCT in;
 	in.lineSpecifer = args.back().string();
 	CSignals gcf;
 	CRect rt(0, 0, 500, 310);
-	HANDLE fig = OpenGraffy(rt, "", GetCurrentThreadId(), win7 ? NULL:GetHWND_SIGPROC(), in);
+	HANDLE fig = OpenGraffy(rt, "", GetCurrentThreadId(), win7 ? NULL:GetHWND_WAVPLAY(), in);
 	HANDLE ax = AddAxis (fig, .08, .18, .86, .72);
 	CAxis *cax = static_cast<CAxis *>(ax);
 
@@ -936,7 +937,7 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	GetFigID(fig, gcf);
 	ast.SetVar("gcf", gcf);
 
-	HWND h  = GetHWND_SIGPROC();
+	HWND h  = GetHWND_WAVPLAY();
 	static char buf[64];
 	CFigure *cfig = static_cast<CFigure *>(fig);
 	cfig->m_dlg->GetWindowText(buf, sizeof(buf));
@@ -945,7 +946,7 @@ void aux_plot(CAstSig &ast, const AstNode *pnode, const AstNode *p)
 	ast.Sig.SetValue((double)(int)plotline);
 
 //	if (mutex==NULL) mutex = CreateMutex(0, 0, 0);
-	if (hEvent==NULL) 	hEvent = CreateEvent(NULL, FALSE, FALSE, TEXT("AUXCONScriptEvent")); 
+//	if (hEvent==NULL) 	hEvent = CreateEvent(NULL, FALSE, FALSE, TEXT("AUXCONScriptEvent")); 
 }
 
 void aux_pause(CAstSig &ast, const AstNode *pnode, const AstNode *p)

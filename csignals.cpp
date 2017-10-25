@@ -36,10 +36,6 @@
 void filter(int nTabs, double *num, double *den, int length, double *in, double *out);
 void filter(int nTabs, double *num, int length, double *in, double *out);
 
-int PlayBufAsynch16(UINT DevID, short *dataBuffer, int length, int nChan, int fs, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, int loop, char* errstr);
-int continuePlay(UINT DevID, SHORT *dataBuffer, int length, int nChan, UINT userDefinedMsgID, int nProgReport, char *errstr);
-void SetLoop();
-
 #define DOUBLE2SHORT(x)	((short)(max(min((x),1),-1)*(double)0x007fff))
 
 int _double_to_24bit(double x)
@@ -3048,7 +3044,7 @@ EXP_CS int CSignals::Wavwrite(const char *wavname, char *errstr, std::string wav
 //	else if (wavformat=="vorbis")
 //		sfinfo.format = SF_FORMAT_OGG + SF_FORMAT_VORBIS; // not available ...  ogg.c requires external lib which I don't have yet. bjkwon 03/19/2016
 	else
-	{	sprintf(errstr, "Supported waveformat---8, 16, 24, 32, ulaw, alaw, adpcm1 or adpcm2.\n", wavname);
+	{	sprintf(errstr, "Supported waveformat---8, 16, 24, 32, ulaw, alaw, adpcm1 or adpcm2.\n");
 		return NULL;	}
 	sfinfo.frames = nSamples;
 	sfinfo.samplerate = fs;
@@ -3107,7 +3103,7 @@ EXP_CS int CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, 
 	return PlayArray(DevID, userDefinedMsgID, hApplWnd, nBlocks, errstr, loop);
 }
 
-EXP_CS int CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr)
+EXP_CS int CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, double *block_dur_ms, char *errstr)
 {// returns a negative number if error occurrs
  // This play the sound by specified block duration, generating event notification in every block
  // block_dur_ms is adjusted by the quantization of fs. Therefore, user should check if it has beend adjusted during this call.
@@ -3116,7 +3112,7 @@ EXP_CS int CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplW
 	double _nBlocks = (double)nSamples / nSamples4Block;
 	int nBlocks = (int)_nBlocks;
 	if (_nBlocks - (double)nBlocks > 0.1) nBlocks++;
-	return PlayArrayNext(DevID, userDefinedMsgID, hApplWnd, nBlocks, errstr);
+	return PlayArrayNext(DevID, userDefinedMsgID, nBlocks, errstr);
 }
 
 short * CSignals::makebuffer(int &nChan)
@@ -3150,7 +3146,7 @@ EXP_CS int CSignals::PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, 
 	return PlayBufAsynch16(DevID, Buffer2Play, nSamples, nChan, fs, userDefinedMsgID, hApplWnd, nProgReport, loop, errstr);
 }
 
-EXP_CS int CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int nProgReport, char *errstr)
+EXP_CS int CSignals::PlayArrayNext(int DevID, UINT userDefinedMsgID, int nProgReport, char *errstr)
 {
 	errstr[0]=0;
 	int nChan, ecode(MMSYSERR_NOERROR);

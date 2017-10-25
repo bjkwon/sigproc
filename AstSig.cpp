@@ -1,5 +1,6 @@
 #include <sstream>
 #include <list>
+#include <algorithm>
 #include <exception>
 #include <math.h>
 #include <time.h>
@@ -21,6 +22,8 @@ ERROR: NODE_EXTRACT : variable not available.
 which is not helpful to users.
 */
 
+#define PRINTLOG(FNAME,STR) \
+{ FILE*__fp=fopen(FNAME,"at"); fprintf(__fp,STR);	fclose(__fp); }
 
 #ifdef XCOM
 
@@ -30,7 +33,6 @@ class xcom
 {
 public:
 	vector<CAstSig*> vecast;
-	vector<const AstNode*> vecnodeUDF;
 
 	vector<string> history;
 	size_t nHistFromFile;
@@ -42,9 +44,8 @@ public:
 	xcom();
 	virtual ~xcom();
 	void console();
-	void gendebugcommandframe();
-	bool isdebugcommand(INPUT_RECORD *in, int len);
-	void getinput(char* readbuffer);
+	void checkdebugkey(INPUT_RECORD *in, int len);
+	int getinput(char* readbuffer);
 	size_t ReadHist();
 	void ShowWS_CommandPrompt(CAstSig *pcast);
 	int computeandshow(const char *input, const AstNode *pCall=NULL);
@@ -58,15 +59,24 @@ public:
 	size_t ctrlshiftleft(const char *buf, DWORD offset);
 	int hook(CAstSig *ast, string HookName, const char* args);
 	void LogHistory(vector<string> input);
-	bool debugcommand(const char* cmd);
 	bool dbmapfind(const char* udfname);
-	int breakpoint(CAstSig *past, const AstNode *pnode);
-	void debug_appl_manager(const CAstSig *debugAstSig, int debug_status, int line=-1);
+	void breakpoint(CAstSig *past, const AstNode *pnode, bool freepass=false);
+	void debug_appl_manager(CAstSig *debugAstSig, DEBUG_STATUS debug_status, int line=-1);
 	bool IsThisBreakpoint(CAstSig *past, const AstNode *pnode);
 };
 
 extern xcom mainSpace;
-#endif
+#endif //CISIGPROC
+#else
+
+class xcom
+{
+public:
+	vector<CAstSig*> vecast;
+	void debug_appl_manager(CAstSig *debugAstSig, DEBUG_STATUS debug_status, int line=-1) {};
+	bool dbmapfind(const char* str) {return true;}
+};
+xcom mainSpace;
 #endif // XCOM
 
 void checkVector(const AstNode *pnode, CSignals &checkthis, string addmsg="");
@@ -106,12 +116,12 @@ CAstSig::CAstSig(const CAstSig &org)
 
 //RECOMMENDED CONSTRUCTOR 1  7/8/2017
 CAstSig::CAstSig(CAstSigEnv *env) // Use this constructor for auxlab. env has been defined prior to this.
-: pAst(NULL), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), fExit(false), debugon(false), dstatus(null), pLast(NULL), son(NULL), dad(NULL), pEnv(env), CallbackCIPulse(NULL), CallbackHook(NULL)
+: pAst(NULL), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), fExit(false), dstatus(null), pLast(NULL), son(NULL), dad(NULL), pEnv(env), CallbackCIPulse(NULL), CallbackHook(NULL)
 {
 }
 //RECOMMENDED CONSTRUCTOR 2  7/8/2017
 CAstSig::CAstSig(const CAstSig *src)
-: pAst(NULL), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), fExit(false), debugon(false), dstatus(null), pLast(NULL), son(NULL), dad(NULL), CallbackCIPulse(NULL), CallbackHook(src->CallbackHook)
+: pAst(NULL), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), fExit(false), dstatus(null), pLast(NULL), son(NULL), dad(NULL), CallbackCIPulse(NULL), CallbackHook(src->CallbackHook)
 {
 	Vars = src->Vars;
 	if (src) {
@@ -121,7 +131,7 @@ CAstSig::CAstSig(const CAstSig *src)
 }
 
 CAstSig::CAstSig(const char *str, const CAstSig *src) // Used in auxfunc.cpp and psyntegDlgNIC.cpp
-: pAst(NULL), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), fExit(false), debugon(false), dstatus(null), pLast(NULL), son(NULL), dad(NULL), CallbackCIPulse(NULL), CallbackHook(NULL)
+: pAst(NULL), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), fExit(false), dstatus(null), pLast(NULL), son(NULL), dad(NULL), CallbackCIPulse(NULL), CallbackHook(NULL)
 {
 	Vars = src->Vars;
 	if (src) {
@@ -132,7 +142,7 @@ CAstSig::CAstSig(const char *str, const CAstSig *src) // Used in auxfunc.cpp and
 }
 
 CAstSig::CAstSig(const char *str, CAstSigEnv *env) // Used in dancer
-: pAst(NULL), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), fExit(false), debugon(false), dstatus(null), pLast(NULL), son(NULL), dad(NULL), pEnv(env), CallbackCIPulse(NULL), CallbackHook(NULL)
+: pAst(NULL), pCall(NULL), Script(""), statusMsg(""), fAllocatedAst(false), nextBreakPoint(0xffff), fExit(false), dstatus(null), pLast(NULL), son(NULL), dad(NULL), pEnv(env), CallbackCIPulse(NULL), CallbackHook(NULL)
 {
 	SetNewScript(str);
 }
@@ -155,6 +165,7 @@ CAstSig::~CAstSig()
 
 CAstSig &CAstSig::SetNewScript(const char *str, AstNode *pAstOut)
 {
+
 	int res;
 	char *errmsg;
 	if (strlen(str)==0) return *this;
@@ -217,7 +228,7 @@ AstNode *CAstSig::SetNewScriptFromFile(const char *udf_filename, FILE *fp)
 	if (pEnv->UDF_body[udf_filename] != buf)
 	{
 		if (pEnv->UDF_body[udf_filename].size()>0)
-			SendMessage(GetHWND_SIGPROC(), WM__DEBUG, (WPARAM)0, (LPARAM)udf_filename);
+			SendMessage(GetHWND_WAVPLAY(), WM__DEBUG, (WPARAM)0, (LPARAM)udf_filename);
 		SetNewScript(buf, NULL);
 		pEnv->UDF_body[udf_filename] = buf;
 	}
@@ -411,40 +422,29 @@ bool CAstSig::isInterrupted(void)
 }
 
 
-CSignals &CAstSig::Compute(void)
+vector<CSignals> CAstSig::Compute(void)
 {
+	vector<CSignals> res;
 	Sig.cell.clear();
 	try {
-		if (!pAst)
-			return Sig;
+		if (!pAst) {
+			res.push_back(Sig);
+			return res;
+		}
 		GfInterrupted = false;
 		Tick0 = GetTickCount0();
 		if (pAst->type == NODE_BLOCK) {	// main workspace, scan for local functions
-			AstNode *pp = NULL;
-			for (AstNode *p=pAst->child; p;) {
-				if (p->type == T_FUNCTION) {
-					if (AstNode *pOld=RetrieveUDF(p->str))
-						yydeleteAstNode(pOld, 0);	// delete AST tree of existing function with the same name
-					pEnv->UDFs[p->str] = p;
-					// detach it from pAst tree so that it will remain available even after pAst is replaced by SetNewScript()
-					if (pp) {	// take p out of pAst tree
-						pp->next = p->next;
-						p->next = NULL;
-						p = pp;
-					} else {	// replacing head node (first line is function definition)
-						pAst->child = p->next;
-						p->next = NULL;
-						p = pAst->child;
-						continue;
-					}
-				}
-				pp = p;
+			AstNode *p = pAst->next;
+			while (p)
+			{
+				res.push_back(Compute(p));
 				p = p->next;
 			}
 		}
-		Compute(pAst);
+		else
+			res.push_back(Compute(pAst));
 		Tick1 = GetTickCount0();
-		return Sig;
+		return res;
 	} catch (const CAstException &e) {
 		char errmsg[2048];
 		strncpy(errmsg, e.getErrMsg().c_str(), sizeof(errmsg)/sizeof(*errmsg));
@@ -476,19 +476,35 @@ AstNode *CAstSig::get_tree_on_line(const AstNode *pnode, int line)
 	return p;
 }
 
+int CAstSig::isthislocaludf(void)
+{// check if this AstSig has been created to process a local udf
+// assume: Script has been set.
+	map<string,AstNode *>::iterator ref = pEnv->UDFs.find(Script);
+	if (ref==pEnv->UDFs.end()) return 0; // no UDFs registered with the name Script
+	for (map<string,AstNode *>::iterator it=pEnv->UDFs.begin(); it!=pEnv->UDFs.end(); it++)
+	{
+		if (it->first!=Script)
+		{
+			for (AstNode *p=it->second; p; p=p->next)
+				if (p==ref->second) return 1;
+		}
+	}
+	return 0;
+}
 
-void CAstSig::CallUDF(int debug_status)
+void CAstSig::CallUDF()
 {	//pCall: AstNode when the actual calling was made in the calling workspace (except LHS, which is treated separately)
 	//pUDF: AstNode created after ReadUDF ("formal" context--i.e., how the udf file was read with variables used in the file)
 	//pOutParam: AstNode for formal output variable (or LHS), just used inside of this function.
 	// Output parameter dispatching (sending the output back to the calling worksapce) is done with pOutParam and lhs at the bottom.
 
+	char buf[256];
 	vector<CSignals*> holder;
 	vector<string> argout;
 	AstNode *pUDF = pEnv->UDFs[pCall->str];
 	ostringstream oss;
 	set<int> breakpoint;
-	AstNode *p, *pf, *pa;	 // formal & actual parameter
+	AstNode *p0, *p, *pf, *pa;	 // formal & actual parameter
 	size_t cnt, nArgout;
 	CAstSigEnv *pLocalEnv(NULL);
 	// output parameter binding
@@ -532,33 +548,11 @@ void CAstSig::CallUDF(int debug_status)
 	son->SetVar("nargout", (double)nArgout);
 	son->pEnv->UDFs = pEnv->UDFs;	// copy other function definitions - especially for recursive calls.
 	son->pEnv->AuxPath = pEnv->AuxPath;
-	son->fullUDFpath = fullUDFpath;
+	son->pEnv->UDFsPath = pEnv->UDFsPath;
+
+	if (dstatus==stepping_in) son->dstatus = stepping_in;
 
 	son->Script = pCall->str;
-
-#ifndef CISIGPROC  
-//	const char *baseudf = son->baseudfname();
-	if (pEnv->DebugBreaks.find(fullUDFpath)!=pEnv->DebugBreaks.end())
-	{	
-//		son->Script = pCall->str; // To send UDF name to the debugger window (a hack for debugger)
-		// needed to change this way to avoid crash at the above line--pCall->str is ambiguous... is it the local udf or base udf... need
-		// needed to make local udf to make debugger window function scope, but 
-		// it has a problem when DebugBreaks does not store br points by local udf name... 
-		// Right now, it works but it may not show debugger window function scope properly.		Do something.. 9/21/2017 bjk
-//		son->Script = baseudf; 
-
-		son->nextBreakPoint = pEnv->DebugBreaks[fullUDFpath].front();
-		debugon = son->debugon = true;
-		mainSpace.debug_appl_manager(son, entering);
-	}
-	else if (dstatus==stepping_in) 
-	{
-		son->nextBreakPoint = 2;
-		son->dstatus = stepping;
-		son->Script = pCall->str; // To send UDF name to the debugger window (a hack for debugger)
-		son->debugon = true;
-		mainSpace.debug_appl_manager(son, entering);
-	}
 	for (p=pUDF->next; p; p=p->next)	// This is where local functions are registered in a UDF 
 		if (p->type == T_FUNCTION)	
 		{
@@ -570,65 +564,74 @@ void CAstSig::CallUDF(int debug_status)
 			}
 			son->pEnv->UDFs[p->str] = p; // this updates the entire UDFs. Need to make it local...
 		}
+
+	p0 = p = son->pAst->type==NODE_BLOCK ? son->pAst->next: son->pAst;
+	int line2, line1=p->line;
+	for (; p0; p0=p0->next)
+		line2 = p0->line;
+	//for non-local udf, line1 and line2 should be the entire range of the file
+	//for local udf (subfunction), line1 and line2 should be only the range of the sub function.
+	//local udf's are found in pUDF->next
+	if (pUDF->next && pUDF->next->child)
+		for (p0 = pUDF->next->child->next; p0; p0=p0->next)
+			line2 = p0->line;
+	mainSpace.vecast.push_back(son);
+
+	//check if this is subject to debugging.
+	if (son->isthislocaludf()==1 && dstatus!=null)
+		son->dstatus = dstatus;
+	if (dstatus==stepping_in && son->isthislocaludf()==1)
+		mainSpace.debug_appl_manager(son, entering);
+	else
+	{
+		string full = pEnv->UDFsPath[son->Script];
+		if (pEnv->DebugBreaks.find(full)!=pEnv->DebugBreaks.end())
+		{	
+			for (vector<int>::iterator it=pEnv->DebugBreaks[full].begin(); it!=pEnv->DebugBreaks[full].end(); it++)
+			{
+				if (*it < line1) continue;
+				if (*it <= line2) {
+					son->dstatus = progress; son->nextBreakPoint = *it; 
+					mainSpace.debug_appl_manager(son, entering);
+					break; 
+				}
+			}
+		}
+	}
+#ifdef _DEBUG
+	Beep(1000, 50);
 #endif
 	
-	p = son->pAst->type==NODE_BLOCK ? son->pAst->next: son->pAst;
-	son->son=son; // is this necessary? 7/25
-#ifdef _DEBUG
-	Beep(400, 300);
-#endif
+	DWORD hCurID = GetCurrentThreadId();
 	while (p)
 	{
+#ifdef XCOM
 		son->pLast=p;
 		if (p->type=='=' || p->type==T_FOR || p->type==T_WHILE || p->type==NODE_INITCELL || p->type==NODE_IXASSIGN || p->type==NODE_IDLIST)
-			mainSpace.breakpoint(this, p);
+			mainSpace.breakpoint(son, p);
+#endif
 		son->Compute(p);
 		if (son->fExit) break;
 		p=p->next;
 	}
-#ifdef XCOM
-#ifndef CISIGPROC  
-	if (son->debugon) //if in debug mode, exit here.
+	mainSpace.vecast.pop_back();
+	if (son->dstatus!=null)
 	{
+		son->currentLine = -1; // to be used in CDebugDlg::ProcessCustomDraw() (re-drawing with default background color)... not necessary for son->dstatus==stepping (because currentLine has been updated stepping) but won't hurt
 		mainSpace.debug_appl_manager(son, exiting);
-		if (son->currentLine > son->nextBreakPoint) // stepping out
-		{ 
-			if ( son->dstatus==exiting)
-			{ // Exiting a function scope with stepping to the next higher scope
-				if (mainSpace.dbmapfind(son->dad->GetScript().c_str()))
-				{
-					mainSpace.debug_appl_manager(son->dad, entering); 
-					son->dad->dstatus=stepping;
-					//if there's already break point set up, skip this line
-//						son->dad->nextBreakPoint = 2; // to continue stepping in the dad scope from the beginning
-				}
-				else if (son->dad && son->dad->dad) 
-				{
-//					son->dad->Script = son->dad->dad->pCall->str; 
-					mainSpace.debug_appl_manager(son->dad, entering); 
-					son->dad->dstatus = stepping;
-//						son->dad->nextBreakPoint = son->dad->currentLine+1; // to ensure to continue stepping in the dad scope.
-				}
-				else
-					printf("\n");
-			}
-		}
-		else if (son->dstatus==continuing) // continuing till the end
+		if (mainSpace.vecast.size()>1)
 		{
-			if (son->dad && son->dad->dad)
+			if (son->dstatus==continuing || son->dstatus==stepping)
+				dstatus = son->dstatus;
+			if (son->dstatus==stepping && !mainSpace.dbmapfind(Script.c_str()))
 			{
-				mainSpace.debug_appl_manager(son->dad, entering); 
+				mainSpace.debug_appl_manager(this, entering); 
 			}
-			else
-				printf("\n");
 		}
 	}
-#endif 
-#endif // #ifdef XCOM
-	//	son->pEnv->UDFs.clear();	// clear it so that function definitions will not be deleted by the destructor of SubAstSig
 	if (son)
 	{
-		//preparing output transfer
+		// output parameter binding
 		cnt=0;
 		for (vector<string>::iterator itstr = argout.begin(); itstr!=argout.end() && cnt<nArgout; itstr++)
 		{
@@ -655,12 +658,15 @@ void CAstSig::CallUDF(int debug_status)
 	son->son=NULL;
 	delete son;
 	son=NULL;
+	if (pLocalEnv) 
+		delete pLocalEnv;
 }
 
 void CAstSig::cleanup_sons()
 {
 #ifdef XCOM
 #ifndef CISIGPROC  
+	char buf[256];
 	CAstSig *up=NULL, *tp = this; 
 	for (; tp && tp->son; tp=tp->son)
 	{
@@ -670,6 +676,9 @@ void CAstSig::cleanup_sons()
 	{
 		up = tp->dad;
 		mainSpace.debug_appl_manager(tp, exiting); 
+		//sprintf(buf,"CAstSig::cleanup_sons() tp %x deleted\n", tp);
+		//PRINTLOG("check_mem_clean",buf)
+		mainSpace.vecast.pop_back();
 		delete tp;
 		tp = up;
 	}
@@ -975,8 +984,9 @@ AstNode *CAstSig::ReadUDF(const char *udf_filename, const AstNode *pnode)
 { // This is where the udf file is read and processed from the path
   // After this call, pEnv->UDFs[udf_filename] wil have AstNode with T_FUNCTION type (if there are local functions, they will be at pEnv->UDFs[udf_filename]->next and continue to be linked with next
 	if (!udf_filename) return NULL;
-	string dummy;
-	FILE *auxfile = OpenFileInPath(udf_filename, "aux", dummy);
+	string fullpath;
+	FILE *auxfile = OpenFileInPath(udf_filename, "aux", fullpath);
+	transform(fullpath.begin(), fullpath.end(), fullpath.begin(), ::tolower);
 	if (!auxfile)
 	{
 		//if udf_filename is local function it should continue down, otherwise return NULL
@@ -1000,15 +1010,7 @@ AstNode *CAstSig::ReadUDF(const char *udf_filename, const AstNode *pnode)
 			throw CAstException(pnode, this, "inconsistent function name", string(string(string(udf_filename)+" vs ")+pnode4Func->str).c_str());
 
 		pEnv->UDFs[udf_filename] = pnode4Func;	// pnode4Func->next might be valid, which is a local function. It will be taken care of in CallSub()
-		for (map<string, vector<int>>::iterator it=pEnv->DebugBreaks.begin(); it!=pEnv->DebugBreaks.end(); it++)
-		{
-			char fname[256];
-			_splitpath(it->first.c_str(), NULL, NULL, fname, NULL);
-			if (!strcmp(udf_filename,fname)) {
-				fullUDFpath = it->first;
-				break;
-			}
-		}
+		pEnv->UDFsPath[udf_filename] = fullpath;
 		// The following should be after all the throws. Otherwise, the UDF AST will be dangling.
 		// To prevent de-allocation of the AST of the UDF when the aux is destroyed.
 		if (aux.pAst->type == NODE_BLOCK)
@@ -1062,7 +1064,10 @@ const char* CAstSig::baseudfname()
 	// At this point, p is ast used when the call was made in the base workplace.
 	if (p->pAst)
 	{
-		if (p->pAst->type==NODE_CALL)
+		if (p->pAst->type == NODE_BLOCK)
+			// necessary when two udf statements are on one line e.g., a=udf1(x); b=udf2(x); , and going through debugger
+			return Script.c_str();
+		else if (p->pAst->type==NODE_CALL)
 			return p->pAst->str; 
 		else if (p->pAst->type=='=')
 		{
@@ -1625,17 +1630,17 @@ try {
 		break;
 	case T_SIGMA:
 		try {
-			int n;
-			tsig = Compute(p->child);
-			blockCell(pnode,  Sig);
-			n = 0;
-			for (CAstSig SubAstSig(p->next, this); n<tsig.nSamples; n++) {
-				SubAstSig.SetVar(p->str, tsig.buf[n]);
-				if (n)
-					Sig += SubAstSig.Compute();
-				else
-					Sig = SubAstSig.Compute();
-			}
+			//int n;
+			//tsig = Compute(p->child);
+			//blockCell(pnode,  Sig);
+			//n = 0;
+			//for (CAstSig SubAstSig(p->next, this); n<tsig.nSamples; n++) {
+			//	SubAstSig.SetVar(p->str, tsig.buf[n]);
+			//	if (n)
+			//		Sig += SubAstSig.Compute();
+			//	else
+			//		Sig = SubAstSig.Compute();
+			//}
 		} catch (const char *errmsg) {
 			throw CAstException(pnode, this, "Calling sigma( )\n\nIn sigma expression:\n"+string(errmsg));
 		}
@@ -1881,9 +1886,6 @@ CAstSigEnv::CAstSigEnv(const int fs)
 
 CAstSigEnv::~CAstSigEnv()
 {
-	map<string,AstNode *>::iterator it;
-	for (it=UDFs.begin(); it!=UDFs.end(); it++)
-		yydeleteAstNode(it->second, 0);
 }
 
 int CAstSig::ClearVar(const char *var)
@@ -1963,8 +1965,14 @@ CAstSigEnv& CAstSigEnv::operator=(const CAstSigEnv& rhs)
 		map<string,AstNode *> yy = rhs.UDFs;
 		for (map<string,AstNode *>::iterator it = yy.begin(); it!=yy.end(); it++)
 			UDFs[it->first] = it->second;
-		map<string, vector<int>> ss = rhs.DebugBreaks;
-		for (map<string,vector<int>>::iterator it = ss.begin(); it!=ss.end(); it++)
+		map<string,string> ss = rhs.UDFsPath;
+		for (map<string,string>::iterator it = ss.begin(); it!=ss.end(); it++)
+			UDFsPath[it->first] = it->second;
+		ss = rhs.UDF_body;
+		for (map<string,string>::iterator it = ss.begin(); it!=ss.end(); it++)
+			UDF_body[it->first] = it->second;
+		map<string, vector<int>> vv = rhs.DebugBreaks;
+		for (map<string,vector<int>>::iterator it = vv.begin(); it!=vv.end(); it++)
 			DebugBreaks[it->first] = it->second;
 	}
 	return *this;

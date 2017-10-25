@@ -48,7 +48,6 @@ enum DEBUG_STATUS
     exiting,
     cleanup,
 	aborting,
-	file_changed,
 };
 
 //End of Used for communication bet sigproc and xcom (i.e., AstSig.cpp and showvar.cpp)
@@ -56,6 +55,11 @@ enum DEBUG_STATUS
 #ifdef _WINDOWS
 #ifndef _MFC_VER // If MFC is NOT used.
 #include <windows.h>
+
+#ifndef NO_PLAYSND
+#include "wavplay.h"
+#endif // NO_PLAYSND
+
 #else 
 #include "afxwin.h"
 #endif 
@@ -382,8 +386,8 @@ public:
 	// Sound Playback functions
 	EXP_CS int PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr, int  loop=0); // playing with event notification by specified time block
 	EXP_CS int PlayArray(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int  nProgReport, char *errstr, int  loop=0); // full format
-	EXP_CS int PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, double *block_dur_ms, char *errstr);
-	EXP_CS int PlayArrayNext(int DevID, UINT userDefinedMsgID, HWND hApplWnd, int  nProgReport, char *errstr); // full format
+	EXP_CS int PlayArrayNext(int DevID, UINT userDefinedMsgID, double *block_dur_ms, char *errstr);
+	EXP_CS int PlayArrayNext(int DevID, UINT userDefinedMsgID, int  nProgReport, char *errstr); // full format
 	EXP_CS int PlayArray(int DevID, char *errstr); // (blocking play)
 	EXP_CS int PlayArray(char *errstr); //assuming the first device
 #endif // NO_PLAYSND
@@ -421,6 +425,7 @@ class CAstSigEnv
 	friend class CAstSig;
 public:
 	map<string,AstNode *> UDFs;
+	map<string,string> UDFsPath;
 	map<string,string> UDF_body;
 	map<string, vector<int>> DebugBreaks;
 	int Fs;
@@ -440,27 +445,23 @@ public:
 	map<string, CSignals> Vars;
 	AstNode *pAst;
 	CSignals Sig;
-	string statusMsg;
+	string Script;
 	CAstSigEnv *pEnv;
-	unsigned long Tick0, Tick1;
 	int nextBreakPoint, currentLine;
-	const AstNode *pnodeLast;
 	AstNode *pCall;
 	AstNode *lhs;
 	CAstSig *son;
 	CAstSig *dad;
 	AstNode *pLast;
 	DEBUG_STATUS dstatus;
-	string fullUDFpath;
+	string statusMsg;
+	unsigned long Tick0, Tick1;
 private:
 	static const int DefaultFs = 22050;
-	string Script;
 	CSignals replica;
 	double endpoint;
 	bool debugon;
 	bool fAllocatedAst, fExit, fBreak, fContinue;
-protected:
-	int typeLast;
 
 private:
 	void HandleAuxFunctions(const AstNode *pnode);
@@ -487,7 +488,7 @@ public:
 	void cleanup_sons();
 	const char* baseudfname();
 	bool CheckPrepareCallUDF(const AstNode *pnode);
-	void CallUDF(int debug_status=0);
+	void CallUDF();
 	void (*CallbackCIPulse)(const AstNode *, CAstSig *);
 	int (*CallbackHook)(CAstSig &ast, const AstNode *pnode, const AstNode *p);
 	EXP_CS CSignals *RetrieveVar(const char *tagname);
@@ -504,7 +505,7 @@ public:
 
 	EXP_CS CAstSig &SetNewScript(const char *str, AstNode *pAstOut = NULL);
 	EXP_CS AstNode* SetNewScriptFromFile(const char *str, FILE *source);
-	EXP_CS CSignals &Compute(void);
+	EXP_CS vector<CSignals> Compute(void);
 	EXP_CS CSignals &Compute(const AstNode *pnode);
 	EXP_CS CSignals &CellAssign(const AstNode *pnode, AstNode *p);
 	EXP_CS CSignals &Assign(const AstNode *pnode, AstNode *p);
@@ -532,6 +533,8 @@ public:
 	EXP_CS void interrupt(void);
 	EXP_CS bool isInterrupted(void);
 
+	EXP_CS int isthislocaludf(void);
+
 
 	EXP_CS int ClearVar(const char *var);
 	EXP_CS void EnumVar(vector<string> &var);
@@ -551,8 +554,6 @@ EXP_CS void LoopPlay(int  onoff);
 EXP_CS void TerminatePlay();
 EXP_CS void PauseResumePlay(void *pWavePlay, bool fOnOff);
 EXP_CS void TerminateLoop(void *pWavePlay);
-EXP_CS void SetHWND_SIGPROC(HWND hAppl);
-EXP_CS HWND GetHWND_SIGPROC();
 EXP_CS DWORD WinMMGetVolume();
 EXP_CS int WinMMSetVolume(DWORD vol);
 
